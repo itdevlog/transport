@@ -5,6 +5,7 @@ const FORECAST_REFRESH_MS = 20000;
 
 let favorites = { routes: [], stops: [] };
 let refreshTimer = null;
+let routeGen = 0;
 
 /* ---------- utilities ---------- */
 
@@ -226,6 +227,7 @@ function stationRow(st) {
 }
 
 async function renderFavorites(view) {
+  const gen = routeGen;
   view.appendChild(el("h2", {}, ["Избранное"]));
   if (!favorites.routes.length && !favorites.stops.length) {
     view.appendChild(el("div", { class: "empty" },
@@ -261,6 +263,7 @@ async function renderFavorites(view) {
       else if (results.some((r) => r.stale)) showBanner("Часть данных устарела (обновление не удалось)", "warn");
     }
     await refresh();
+    if (gen !== routeGen) return;
     refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
   }
 }
@@ -408,6 +411,7 @@ async function renderStops(view) {
 }
 
 async function renderStop(view, sid) {
+  const gen = routeGen;
   const fav = favorites.stops.find((s) => String(s.id) === String(sid));
   view.appendChild(el("h2", {}, [fav && fav.name ? fav.name : ("Остановка " + sid)]));
   view.appendChild(el("div", { class: "sub" }, ["Прибытие по всем маршрутам"]));
@@ -425,6 +429,7 @@ async function renderStop(view, sid) {
     else if (result.stale) showBanner("Данные устарели: " + result.error.message, "warn");
   }
   await refresh();
+  if (gen !== routeGen) return;
   refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
 }
 
@@ -439,6 +444,7 @@ function stopRefresh() {
 
 async function route() {
   stopRefresh();
+  routeGen += 1;
   showBanner("");
   const view = document.getElementById("view");
   view.innerHTML = "";

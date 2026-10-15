@@ -36,6 +36,12 @@ class FavoritesStoreTest(unittest.TestCase):
         self.assertEqual(server.FavoritesStore(self.path).load(),
                          {"routes": [], "stops": []})
 
+    def test_wrong_shape_file_loads_empty(self):
+        with open(self.path, "w", encoding="utf-8") as fh:
+            fh.write("[1, 2, 3]")
+        self.assertEqual(server.FavoritesStore(self.path).load(),
+                         {"routes": [], "stops": []})
+
     def test_add_persists_across_instances(self):
         store = server.FavoritesStore(self.path)
         store.add("stop", {"id": 5830, "name": "Академия тенниса"})
@@ -159,6 +165,21 @@ class HandleApiTest(unittest.TestCase):
         status, payload = self.call("/api/forecast", {"sid": "5830"})
         self.assertEqual(status, 502)
         self.assertEqual(payload["error"]["reason"], "network")
+
+    def test_internal_error_is_500(self):
+        def boom(_):
+            raise ValueError("kaboom")
+        self.portal.get_forecasts = boom
+        status, payload = self.call("/api/forecast", {"sid": "5830"})
+        self.assertEqual(status, 500)
+        self.assertEqual(payload["error"]["reason"], "internal")
+
+    def test_store_os_error_is_500(self):
+        self.store = unittest.mock.Mock()
+        self.store.load.side_effect = OSError("disk full")
+        status, payload = self.call("/api/favorites")
+        self.assertEqual(status, 500)
+        self.assertEqual(payload["error"]["reason"], "internal")
 
     def test_favorites_add_route_and_dedupe(self):
         self.call("/api/favorites", method="POST",

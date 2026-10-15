@@ -25,6 +25,8 @@ class FavoritesStore:
         try:
             with open(self._path, encoding="utf-8") as fh:
                 data = json.load(fh)
+            if not isinstance(data, dict):
+                return {"routes": [], "stops": []}
             return {"routes": list(data.get("routes", [])),
                     "stops": list(data.get("stops", []))}
         except (OSError, ValueError):
@@ -127,6 +129,8 @@ def handle_api(path, params, method, body, portal, store):
         return 404, {"error": {"reason": "not_found", "message": path}}
     except PortalError as exc:
         return 502, {"error": {"reason": exc.reason, "message": exc.message}}
+    except Exception as exc:  # noqa: BLE001 - keep the server answering
+        return 500, {"error": {"reason": "internal", "message": str(exc)}}
 
 
 DEFAULTS = {
