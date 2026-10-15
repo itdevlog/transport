@@ -10,6 +10,7 @@ from portal import PortalClient, PortalError
 
 
 KIND_KEYS = {"route": "routes", "stop": "stops"}
+MAX_NOTE_LEN = 60
 
 
 class FavoritesStore:
@@ -46,6 +47,20 @@ class FavoritesStore:
         with self._lock:
             data = self._read()
             data[key] = [x for x in data[key] if str(x.get("id")) != str(item_id)]
+            self._write(data)
+            return data
+
+    def set_note(self, kind, item_id, note):
+        key = KIND_KEYS[kind]
+        note = (note or "").strip()
+        with self._lock:
+            data = self._read()
+            for item in data[key]:
+                if str(item.get("id")) == str(item_id):
+                    if note:
+                        item["note"] = note
+                    else:
+                        item.pop("note", None)
             self._write(data)
             return data
 
@@ -119,11 +134,20 @@ def handle_api(path, params, method, body, portal, store):
         if path == "/api/favorites" and method == "POST":
             body = body or {}
             action, kind = body.get("action"), body.get("kind")
-            if kind not in KIND_KEYS or action not in ("add", "remove"):
+            if kind not in KIND_KEYS or action not in ("add", "remove", "note"):
                 return 400, {"error": {"reason": "bad_param", "message": "action/kind"}}
             if action == "add":
                 name = body.get("name") or _resolve_name(portal, kind, body.get("id"))
                 return 200, store.add(kind, {"id": body.get("id"), "name": name})
+            if action == "note":
+                if body.get("id") is None:
+                    return 400, {"error": {"reason": "bad_param", "message": "id required"}}
+                note = body.get("note")
+                if note is None:
+                    note = ""
+                if not isinstance(note, str) or len(note.strip()) > MAX_NOTE_LEN:
+                    return 400, {"error": {"reason": "bad_param", "message": "note too long"}}
+                return 200, store.set_note(kind, body.get("id"), note)
             return 200, store.remove(kind, body.get("id"))
 
         return 404, {"error": {"reason": "not_found", "message": path}}

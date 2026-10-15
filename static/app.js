@@ -255,9 +255,25 @@ async function renderFavorites(view) {
       });
       const chevron = el("span", { class: "chevron" }, ["▸"]);
       head.appendChild(chevron);
-      head.appendChild(el("div", { class: "main" }, [
-        el("div", { class: "name" }, [s.name || ("Остановка " + s.id)]),
-      ]));
+
+      const noteChip = el("span", { class: "stop-note" });
+      if (s.note) noteChip.textContent = s.note; else noteChip.classList.add("hidden");
+      const nameLine = el("div", { class: "name" });
+      nameLine.appendChild(document.createTextNode(s.name || ("Остановка " + s.id)));
+      nameLine.appendChild(noteChip);
+      const noteInput = el("input", {
+        class: "note-input hidden", type: "text", placeholder: "заметка",
+        maxlength: "60", "aria-label": "Заметка к остановке",
+      });
+      const mainBox = el("div", { class: "main" });
+      mainBox.appendChild(nameLine);
+      mainBox.appendChild(noteInput);
+      head.appendChild(mainBox);
+
+      const pencil = el("button", {
+        class: "note-edit", title: "Заметка", "aria-label": "Заметка",
+      }, ["✎"]);
+      head.appendChild(pencil);
       head.appendChild(starButton("stop", s.id, s.name));
 
       const panel = forecastPanel(s.id);
@@ -284,6 +300,57 @@ async function renderFavorites(view) {
           event.preventDefault();
           toggle();
         }
+      });
+
+      // Note editing: the pencil (or the chip) swaps the chip for an inline
+      // field and never toggles the collapsed row — these events stop here.
+      let noteBusy = false;
+      function startEditNote(event) {
+        if (event) { event.preventDefault(); event.stopPropagation(); }
+        noteInput.value = s.note || "";
+        noteInput.classList.remove("hidden");
+        noteChip.classList.add("hidden");
+        pencil.classList.add("hidden");
+        noteInput.focus();
+        noteInput.select();
+      }
+      function stopEditNote() {
+        noteInput.classList.add("hidden");
+        pencil.classList.remove("hidden");
+        noteChip.classList.toggle("hidden", !s.note);
+      }
+      async function commitNote() {
+        if (noteBusy) return;
+        noteBusy = true;
+        const value = noteInput.value.trim();
+        try {
+          const data = await api("/api/favorites", {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ action: "note", kind: "stop", id: s.id, note: value }),
+          });
+          favorites = { routes: data.routes || [], stops: data.stops || [] };
+          const fresh = favorites.stops.find((x) => String(x.id) === sid);
+          s.note = fresh ? fresh.note : undefined;
+          noteChip.textContent = s.note || "";
+          stopEditNote();
+        } catch (err) {
+          showBanner("Заметка: " + err.message, "error");
+          stopEditNote();
+        } finally {
+          noteBusy = false;
+        }
+      }
+      pencil.addEventListener("click", startEditNote);
+      noteChip.addEventListener("click", startEditNote);
+      noteInput.addEventListener("click", (event) => event.stopPropagation());
+      noteInput.addEventListener("keydown", (event) => {
+        event.stopPropagation();
+        if (event.key === "Enter") { event.preventDefault(); commitNote(); noteInput.blur(); }
+        else if (event.key === "Escape") { event.preventDefault(); stopEditNote(); }
+      });
+      noteInput.addEventListener("blur", () => {
+        if (!noteInput.classList.contains("hidden")) commitNote();
       });
 
       card.appendChild(head);

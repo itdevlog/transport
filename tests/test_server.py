@@ -60,6 +60,28 @@ class FavoritesStoreTest(unittest.TestCase):
         store.remove("stop", 5830)
         self.assertEqual(store.load()["stops"], [])
 
+    def test_set_note_persists(self):
+        store = server.FavoritesStore(self.path)
+        store.add("stop", {"id": 5830, "name": "Академия тенниса"})
+        store.set_note("stop", 5830, "в школу")
+        again = server.FavoritesStore(self.path).load()
+        self.assertEqual(again["stops"],
+                         [{"id": 5830, "name": "Академия тенниса", "note": "в школу"}])
+
+    def test_set_note_empty_clears(self):
+        store = server.FavoritesStore(self.path)
+        store.add("stop", {"id": 5830, "name": "X"})
+        store.set_note("stop", 5830, "на работу")
+        store.set_note("stop", 5830, "")
+        again = server.FavoritesStore(self.path).load()
+        self.assertNotIn("note", again["stops"][0])
+
+    def test_set_note_unknown_id_is_noop(self):
+        store = server.FavoritesStore(self.path)
+        store.add("stop", {"id": 5830, "name": "X"})
+        store.set_note("stop", 999, "в школу")
+        self.assertNotIn("note", store.load()["stops"][0])
+
     def test_write_is_atomic(self):
         store = server.FavoritesStore(self.path)
         calls = []
@@ -205,6 +227,47 @@ class HandleApiTest(unittest.TestCase):
         status, payload = self.call("/api/favorites", method="POST",
                                     body={"action": "add", "kind": "planet", "id": 1})
         self.assertEqual(status, 400)
+
+    def test_favorites_note_set_and_read(self):
+        self.call("/api/favorites", method="POST",
+                  body={"action": "add", "kind": "stop", "id": 5830})
+        status, payload = self.call("/api/favorites", method="POST",
+                                    body={"action": "note", "kind": "stop", "id": 5830,
+                                          "note": "в школу"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["stops"][0]["note"], "в школу")
+
+    def test_favorites_note_trims_spaces(self):
+        self.call("/api/favorites", method="POST",
+                  body={"action": "add", "kind": "stop", "id": 5830})
+        self.call("/api/favorites", method="POST",
+                  body={"action": "note", "kind": "stop", "id": 5830, "note": "  в школу  "})
+        status, payload = self.call("/api/favorites")
+        self.assertEqual(payload["stops"][0]["note"], "в школу")
+
+    def test_favorites_note_without_id_is_400(self):
+        status, payload = self.call("/api/favorites", method="POST",
+                                    body={"action": "note", "kind": "stop", "note": "x"})
+        self.assertEqual(status, 400)
+
+    def test_favorites_note_too_long_is_400(self):
+        self.call("/api/favorites", method="POST",
+                  body={"action": "add", "kind": "stop", "id": 5830})
+        status, payload = self.call("/api/favorites", method="POST",
+                                    body={"action": "note", "kind": "stop", "id": 5830,
+                                          "note": "x" * 61})
+        self.assertEqual(status, 400)
+
+    def test_favorites_note_empty_clears(self):
+        self.call("/api/favorites", method="POST",
+                  body={"action": "add", "kind": "stop", "id": 5830})
+        self.call("/api/favorites", method="POST",
+                  body={"action": "note", "kind": "stop", "id": 5830, "note": "в школу"})
+        status, payload = self.call("/api/favorites", method="POST",
+                                    body={"action": "note", "kind": "stop", "id": 5830,
+                                          "note": ""})
+        self.assertEqual(status, 200)
+        self.assertNotIn("note", payload["stops"][0])
 
 
 class HttpServerTest(unittest.TestCase):
