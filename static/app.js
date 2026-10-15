@@ -40,7 +40,7 @@ function formatEta(sec) {
   if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return "—";
   const min = Math.floor(sec / 60);
   if (min < 1) return "меньше минуты";
-  return `через ${min} мин`;
+  return `${min} мин`;
 }
 
 function etaClass(sec) {
@@ -189,8 +189,8 @@ function renderDirGroup(where, arrivals, stop) {
 
   function paint() {
     const custom = (stop && stop.dirs && stop.dirs[where]) || "";
-    labelEl.textContent = "→ " + (custom || where);
-    terminalEl.textContent = custom ? "(" + where + ")" : "";
+    labelEl.textContent = custom || ("до " + where);
+    terminalEl.textContent = custom ? "(до " + where + ")" : "";
   }
 
   if (stop) {
