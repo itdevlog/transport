@@ -59,6 +59,28 @@ class PortalClient:
         self._ssl_context.check_hostname = False
         self._ssl_context.verify_mode = ssl.CERT_NONE
 
+        ttl = config.get("cacheTtl", {})
+        self._routes_cache = CachedValue(ttl.get("routes", 21600))
+        self._route_cache = CachedValue(ttl.get("route", 21600))
+        self._stations_cache = CachedValue(ttl.get("stations", 21600))
+        self._forecast_cache = CachedValue(ttl.get("forecasts", 10))
+
+    def get_routes(self):
+        return self._routes_cache.get("all", lambda: self._request("getRoutes", {})) or []
+
+    def get_route(self, route_id):
+        return self._route_cache.get(
+            route_id, lambda: self._request("getRouteById", {"id": route_id})
+        ) or {}
+
+    def get_stations(self):
+        return self._stations_cache.get("all", lambda: self._request("getStations", {})) or []
+
+    def get_forecasts(self, sid):
+        return self._forecast_cache.get(
+            sid, lambda: self._request("getStationForecasts", {"sid": sid})
+        ) or []
+
     def _build_body(self, cmd, data):
         return {
             "t": self._token,

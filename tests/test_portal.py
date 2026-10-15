@@ -123,5 +123,47 @@ class CachedValueTest(unittest.TestCase):
         self.assertEqual(len(calls), 1)
 
 
+class PortalClientMethodsTest(unittest.TestCase):
+    def make(self):
+        cfg = dict(CONFIG, cacheTtl={"routes": 21600, "route": 21600,
+                                     "stations": 21600, "forecasts": 10})
+        return PortalClient(cfg)
+
+    def test_get_routes_uses_command_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=[{"id": 1554}])
+        client.get_routes(); client.get_routes()
+        client._request.assert_called_once_with("getRoutes", {})
+
+    def test_get_route_passes_id(self):
+        client = self.make()
+        client._request = mock.Mock(return_value={"id": 1554, "subroutes": []})
+        self.assertEqual(client.get_route(1554)["id"], 1554)
+        client._request.assert_called_once_with("getRouteById", {"id": 1554})
+
+    def test_get_stations_uses_command(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=[{"id": 5830}])
+        client.get_stations()
+        client._request.assert_called_once_with("getStations", {})
+
+    def test_get_forecasts_passes_sid_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=[{"arrivalTimeInSec": 575}])
+        client.get_forecasts(5830); client.get_forecasts(5830)
+        client._request.assert_called_once_with("getStationForecasts", {"sid": 5830})
+
+    def test_empty_portal_data_returns_empty_list(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_forecasts(5830), [])
+        self.assertEqual(client.get_routes(), [])
+
+    def test_empty_route_returns_empty_dict(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_route(1554), {})
+
+
 if __name__ == "__main__":
     unittest.main()
