@@ -242,28 +242,65 @@ async function renderFavorites(view) {
   }
   if (favorites.stops.length) {
     view.appendChild(el("div", { class: "sub" }, ["Остановки"]));
-    const panels = favorites.stops.map((s) => {
-      const card = el("div", { class: "card" });
-      const head = el("div", { class: "row" });
-      const link = el("a", { class: "link", href: "#/stop/" + encodeURIComponent(s.id) });
-      link.appendChild(el("div", { class: "name" }, [s.name || ("Остановка " + s.id)]));
-      head.appendChild(link);
+    // Collapsed rows: a stop shows only its name until clicked, so a long
+    // favorites list stays compact. The forecast is fetched lazily on expand.
+    const expanded = new Set();
+    const panels = new Map();
+
+    favorites.stops.forEach((s) => {
+      const sid = String(s.id);
+      const card = el("div", { class: "card stop-card" });
+      const head = el("div", {
+        class: "row stop-head", role: "button", tabindex: "0", "aria-expanded": "false",
+      });
+      const chevron = el("span", { class: "chevron" }, ["▸"]);
+      head.appendChild(chevron);
+      head.appendChild(el("div", { class: "main" }, [
+        el("div", { class: "name" }, [s.name || ("Остановка " + s.id)]),
+      ]));
       head.appendChild(starButton("stop", s.id, s.name));
-      card.appendChild(head);
+
       const panel = forecastPanel(s.id);
-      card.appendChild(panel.list);
+      panels.set(sid, panel);
+      const details = el("div", { class: "stop-details hidden" });
+      details.appendChild(panel.list);
+      details.appendChild(el("div", { class: "stop-open" }, [
+        el("a", { class: "link", href: "#/stop/" + encodeURIComponent(s.id) },
+          ["Все прибытия и обновление →"]),
+      ]));
+
+      function toggle() {
+        const willOpen = !expanded.has(sid);
+        if (willOpen) expanded.add(sid); else expanded.delete(sid);
+        details.classList.toggle("hidden", !willOpen);
+        card.classList.toggle("open", willOpen);
+        head.setAttribute("aria-expanded", String(willOpen));
+        chevron.textContent = willOpen ? "▾" : "▸";
+        if (willOpen) panel.tick();
+      }
+      head.addEventListener("click", toggle);
+      head.addEventListener("keydown", (event) => {
+        if (event.key === "Enter" || event.key === " ") {
+          event.preventDefault();
+          toggle();
+        }
+      });
+
+      card.appendChild(head);
+      card.appendChild(details);
       view.appendChild(card);
-      return panel;
     });
+
     async function refresh() {
-      const results = await Promise.all(panels.map((p) => p.tick()));
+      const open = [...expanded].map((sid) => panels.get(sid)).filter(Boolean);
+      if (!open.length) return;
+      const results = await Promise.all(open.map((p) => p.tick()));
+      if (gen !== routeGen) return;
       const ok = results.every((r) => r.ok);
       const at = results.map((r) => r.at).filter(Boolean).pop();
       if (ok && at) showBanner("Обновлено в " + timeStr(at), "info");
       else if (results.some((r) => r.stale)) showBanner("Часть данных устарела (обновление не удалось)", "warn");
     }
-    await refresh();
-    if (gen !== routeGen) return;
     refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
   }
 }

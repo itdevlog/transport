@@ -91,8 +91,9 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   font-size: .92rem;
 }
 
-.num.type-2 { background: #0b7285; }
-.num.type-3 { background: #2f9e44; }
+.num.type-1 { background: #2f9e44; }
+.num.type-2 { background: #1565c0; }
+.num.type-3 { background: #c8102e; }
 .num.type-other { background: #6b7785; }
 
 .star {
@@ -156,6 +157,31 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 }
 
 .banner.hidden { display: none; }
+
+.hidden { display: none; }
+
+/* Collapsed favorite stop: one compact row that expands on click */
+.stop-card .stop-head {
+  border: none;
+  background: transparent;
+  margin: 0;
+  padding: 8px 2px;
+  cursor: pointer;
+}
+
+.stop-head .chevron {
+  width: 1em;
+  color: var(--muted);
+  font-size: .95rem;
+}
+
+.stop-card.open { border-color: var(--accent); }
+
+.stop-details { padding: 2px 2px 4px; }
+
+.stop-open { padding: 4px 2px 2px; }
+
+.stop-open a { color: var(--accent); }
 .banner.info { background: var(--info-bg); color: var(--info-ink); }
 .banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .banner.error { background: var(--error-bg); color: var(--error-ink); }
