@@ -142,12 +142,21 @@ DEFAULTS = {
 
 
 def load_config(path="config.json"):
+    """Load config.json, then overlay sibling config.local.json (git-ignored).
+
+    Missing, unreadable, unparseable or wrongly-shaped files are skipped, so
+    the app always starts with at least the built-in DEFAULTS.
+    """
     config = dict(DEFAULTS)
-    try:
-        with open(path, encoding="utf-8") as fh:
-            config.update(json.load(fh))
-    except (OSError, ValueError):
-        pass
+    base, ext = os.path.splitext(path)
+    for candidate in (path, base + ".local" + ext):
+        try:
+            with open(candidate, encoding="utf-8") as fh:
+                data = json.load(fh)
+        except (OSError, ValueError):
+            continue
+        if isinstance(data, dict):
+            config.update(data)
     return config
 
 

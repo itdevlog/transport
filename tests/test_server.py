@@ -246,5 +246,51 @@ class HttpServerTest(unittest.TestCase):
         self.assertEqual(ctx.exception.code, 404)
 
 
+class LoadConfigTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.path = os.path.join(self.dir.name, "config.json")
+
+    def _write(self, name, data):
+        with open(os.path.join(self.dir.name, name), "w", encoding="utf-8") as fh:
+            json.dump(data, fh)
+
+    def test_defaults_when_no_files(self):
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 8000)
+        self.assertEqual(config["host"], "0.0.0.0")
+
+    def test_file_overrides_defaults(self):
+        self._write("config.json", {"port": 9000})
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 9000)
+        self.assertEqual(config["host"], "0.0.0.0")
+
+    def test_local_overrides_file(self):
+        self._write("config.json", {"port": 9000, "host": "0.0.0.0"})
+        self._write("config.local.json", {"host": "127.0.0.1"})
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 9000)
+        self.assertEqual(config["host"], "127.0.0.1")
+
+    def test_missing_local_is_fine(self):
+        self._write("config.json", {"port": 8091})
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 8091)
+
+    def test_corrupt_local_is_ignored(self):
+        self._write("config.json", {"port": 8091})
+        with open(os.path.join(self.dir.name, "config.local.json"), "w", encoding="utf-8") as fh:
+            fh.write("{ not json")
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 8091)
+
+    def test_wrong_shape_file_is_ignored(self):
+        self._write("config.json", [1, 2, 3])
+        config = server.load_config(self.path)
+        self.assertEqual(config["port"], 8000)
+
+
 if __name__ == "__main__":
     unittest.main()

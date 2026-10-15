@@ -44,6 +44,20 @@ python3 server.py
 | `port` | порт | `8000` |
 | `cacheTtl` | TTL кэша, сек (`routes`, `route`, `stations`, `forecasts`) | `21600` / `21600` / `21600` / `10` |
 
+### Локальные переопределения (`config.local.json`)
+
+Рядом с `config.json` можно положить `config.local.json` — он **перекрывает**
+значения из `config.json`. Это удобно для настроек конкретной машины
+(адрес, порт), чтобы `git pull` их не затирал: файл в `.gitignore` и в
+репозиторий не попадает.
+
+```json
+{ "host": "127.0.0.1", "port": 8091 }
+```
+
+Отсутствующий, нечитаемый, битый или не-объектный файл просто игнорируется —
+сервис всё равно стартует с `DEFAULTS`.
+
 ## Избранное (`favorites.json`)
 
 Создаётся автоматически при первом изменении (запись атомарная). Файл можно
@@ -64,40 +78,26 @@ python3 -m unittest discover -s tests
 
 ## Развёртывание на Debian
 
-1. Разместить проект, например в `/opt/marshrut`:
+Подробная рабочая инструкция — в [DEPLOY.md](DEPLOY.md) (клонирование из
+git, пользователь `marshrut`, systemd-юнит, reverse-proxy на Caddy/nginx,
+локальный `config.local.json`). Коротко:
 
-   ```bash
-   sudo mkdir -p /opt/marshrut
-   sudo cp -r ./* /opt/marshrut/
-   ```
-
-2. Создать системного пользователя и unit:
-
-   ```bash
-   sudo useradd --system --no-create-home --shell /usr/sbin/nologin marshrut
-   sudo cp systemd/marshrut.service /etc/systemd/system/marshrut.service
-   sudo systemctl daemon-reload
-   sudo systemctl enable --now marshrut
-   ```
-
-   Проверить: `systemctl status marshrut` и `journalctl -u marshrut -f`.
-
-3. Опционально — nginx как reverse-proxy на `127.0.0.1:8000`:
-
-   ```nginx
-   server {
-       listen 80;
-       server_name marshrut.example;
-       location / {
-           proxy_pass http://127.0.0.1:8000;
-           proxy_set_header Host $host;
-       }
-   }
-   ```
+```bash
+sudo useradd --system --no-create-home --shell /usr/sbin/nologin marshrut
+sudo git clone https://github.com/itdevlog/transport.git /opt/transport
+sudo chown -R marshrut:marshrut /opt/transport
+sudo -u marshrut python3 -c "import shutil; shutil.copy('/opt/transport/config.json','/opt/transport/config.local.json')"
+# в config.local.json задать host/port под свою машину
+sudo cp /opt/transport/systemd/marshrut.service /etc/systemd/system/marshrut.service
+sudo systemctl daemon-reload && sudo systemctl enable --now marshrut
+```
 
 ## Обновление
 
 ```bash
-git pull
+sudo git -C /opt/transport pull
 sudo systemctl restart marshrut
 ```
+
+`config.local.json` и `favorites.json` не отслеживаются git и переживают
+обновление без конфликтов.
