@@ -153,6 +153,17 @@ class PortalClientMethodsTest(unittest.TestCase):
         client.get_forecasts(5830); client.get_forecasts(5830)
         client._request.assert_called_once_with("getStationForecasts", {"sid": 5830})
 
+    def test_get_station_routes_passes_sid_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=[{"routeTypeId": 1}])
+        client.get_station_routes(5830); client.get_station_routes(5830)
+        client._request.assert_called_once_with("getStationRoutes", {"sid": 5830})
+
+    def test_get_station_routes_empty_returns_list(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_station_routes(5830), [])
+
     def test_empty_portal_data_returns_empty_list(self):
         client = self.make()
         client._request = mock.Mock(return_value=None)

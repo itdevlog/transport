@@ -64,6 +64,27 @@ class FavoritesStore:
             self._write(data)
             return data
 
+    def set_dir_label(self, kind, item_id, where, label):
+        key = KIND_KEYS[kind]
+        where = (where or "").strip()
+        label = (label or "").strip()
+        with self._lock:
+            data = self._read()
+            for item in data[key]:
+                if str(item.get("id")) == str(item_id):
+                    dirs = item.get("dirs") or {}
+                    if label:
+                        dirs[where] = label
+                        item["dirs"] = dirs
+                    else:
+                        dirs.pop(where, None)
+                        if dirs:
+                            item["dirs"] = dirs
+                        else:
+                            item.pop("dirs", None)
+            self._write(data)
+            return data
+
     def _write(self, data):
         directory = os.path.dirname(os.path.abspath(self._path)) or "."
         fd, tmp = tempfile.mkstemp(dir=directory, prefix=".favorites-", suffix=".tmp")
@@ -128,13 +149,19 @@ def handle_api(path, params, method, body, portal, store):
             )
             return 200, {"forecasts": forecasts}
 
+        if path == "/api/stop-routes" and method == "GET":
+            sid = _as_int(params.get("sid"))
+            if sid is None:
+                return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
+            return 200, {"routes": portal.get_station_routes(sid)}
+
         if path == "/api/favorites" and method == "GET":
             return 200, store.load()
 
         if path == "/api/favorites" and method == "POST":
             body = body or {}
             action, kind = body.get("action"), body.get("kind")
-            if kind not in KIND_KEYS or action not in ("add", "remove", "note"):
+            if kind not in KIND_KEYS or action not in ("add", "remove", "note", "dir"):
                 return 400, {"error": {"reason": "bad_param", "message": "action/kind"}}
             if action == "add":
                 name = body.get("name") or _resolve_name(portal, kind, body.get("id"))
@@ -148,6 +175,18 @@ def handle_api(path, params, method, body, portal, store):
                 if not isinstance(note, str) or len(note.strip()) > MAX_NOTE_LEN:
                     return 400, {"error": {"reason": "bad_param", "message": "note too long"}}
                 return 200, store.set_note(kind, body.get("id"), note)
+            if action == "dir":
+                if body.get("id") is None:
+                    return 400, {"error": {"reason": "bad_param", "message": "id required"}}
+                where = body.get("where")
+                label = body.get("label")
+                if label is None:
+                    label = ""
+                if not isinstance(where, str) or not where.strip():
+                    return 400, {"error": {"reason": "bad_param", "message": "where required"}}
+                if not isinstance(label, str) or len(label.strip()) > MAX_NOTE_LEN:
+                    return 400, {"error": {"reason": "bad_param", "message": "label too long"}}
+                return 200, store.set_dir_label(kind, body.get("id"), where, label)
             return 200, store.remove(kind, body.get("id"))
 
         return 404, {"error": {"reason": "not_found", "message": path}}

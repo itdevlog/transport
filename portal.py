@@ -64,6 +64,7 @@ class PortalClient:
         self._route_cache = CachedValue(ttl.get("route", 21600))
         self._stations_cache = CachedValue(ttl.get("stations", 21600))
         self._forecast_cache = CachedValue(ttl.get("forecasts", 10))
+        self._station_routes_cache = CachedValue(ttl.get("stations", 21600))
 
     def get_routes(self):
         return self._routes_cache.get("all", lambda: self._request("getRoutes", {})) or []
@@ -79,6 +80,11 @@ class PortalClient:
     def get_forecasts(self, sid):
         return self._forecast_cache.get(
             sid, lambda: self._request("getStationForecasts", {"sid": sid})
+        ) or []
+
+    def get_station_routes(self, sid):
+        return self._station_routes_cache.get(
+            sid, lambda: self._request("getStationRoutes", {"sid": sid})
         ) or []
 
     def _build_body(self, cmd, data):
