@@ -1,9 +1,11 @@
 import json
 import ssl
+import threading
+import time as _time
 import unittest
 from unittest import mock
 
-from portal import PortalClient, PortalError
+from portal import CachedValue, PortalClient, PortalError
 
 CONFIG = {
     "portalUrl": "https://example.test/php/apiRequest.php",
@@ -80,6 +82,45 @@ class RequestTest(unittest.TestCase):
         ctx = uo.call_args.kwargs["context"]
         self.assertEqual(ctx.verify_mode, ssl.CERT_NONE)
         self.assertFalse(ctx.check_hostname)
+
+
+class CachedValueTest(unittest.TestCase):
+    def test_caches_within_ttl(self):
+        now = [100.0]
+        cache = CachedValue(ttl=10, clock=lambda: now[0])
+        calls = []
+        val = lambda: calls.append(1) or "v"
+        self.assertEqual(cache.get("k", val), "v")
+        self.assertEqual(cache.get("k", val), "v")
+        self.assertEqual(len(calls), 1)
+
+    def test_refetches_after_ttl(self):
+        now = [100.0]
+        cache = CachedValue(ttl=10, clock=lambda: now[0])
+        calls = []
+        val = lambda: calls.append(1) or "v"
+        cache.get("k", val)
+        now[0] = 111.0
+        cache.get("k", val)
+        self.assertEqual(len(calls), 2)
+
+    def test_single_flight(self):
+        cache = CachedValue(ttl=10)
+        calls = []
+        started = threading.Barrier(2)
+        def producer():
+            calls.append(1)
+            _time.sleep(0.2)
+            return "v"
+        results = []
+        def worker():
+            started.wait()
+            results.append(cache.get("k", producer))
+        threads = [threading.Thread(target=worker) for _ in range(2)]
+        [t.start() for t in threads]
+        [t.join() for t in threads]
+        self.assertEqual(results, ["v", "v"])
+        self.assertEqual(len(calls), 1)
 
 
 if __name__ == "__main__":

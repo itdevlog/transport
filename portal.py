@@ -2,11 +2,39 @@
 
 import json
 import ssl
+import threading
 import time
 import urllib.error
 import urllib.request
 
 DEFAULT_WUID = "marshrut-web"
+
+
+class CachedValue:
+    """Кэш одного значения с TTL и защитой от параллельного дублирования."""
+
+    def __init__(self, ttl, clock=time.monotonic):
+        self._ttl = ttl
+        self._clock = clock
+        self._cache = {}
+        self._key_locks = {}
+        self._lock = threading.Lock()
+
+    def get(self, key, producer):
+        with self._lock:
+            entry = self._cache.get(key)
+            if entry is not None and entry[1] > self._clock():
+                return entry[0]
+            key_lock = self._key_locks.setdefault(key, threading.Lock())
+        with key_lock:  # single-flight per key
+            with self._lock:
+                entry = self._cache.get(key)
+                if entry is not None and entry[1] > self._clock():
+                    return entry[0]
+            value = producer()
+            with self._lock:
+                self._cache[key] = (value, self._clock() + self._ttl)
+            return value
 
 
 class PortalError(Exception):
