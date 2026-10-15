@@ -1,9 +1,12 @@
+import http.server
 import json
+import mimetypes
 import os
 import tempfile
 import threading
+import urllib.parse
 
-from portal import PortalError
+from portal import PortalClient, PortalError
 
 
 KIND_KEYS = {"route": "routes", "stop": "stops"}
@@ -124,3 +127,92 @@ def handle_api(path, params, method, body, portal, store):
         return 404, {"error": {"reason": "not_found", "message": path}}
     except PortalError as exc:
         return 502, {"error": {"reason": exc.reason, "message": exc.message}}
+
+
+DEFAULTS = {
+    "portalUrl": "https://xn--80axnakf7a.xn--80acgfbsl1azdqr.xn--p1ai/php/apiRequest.php",
+    "token": "11111111-50b3-4fec-b922-8a50a1d38366",
+    "reg": 66002, "wuid": "marshrut-web", "host": "0.0.0.0", "port": 8000,
+    "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10},
+}
+
+
+def load_config(path="config.json"):
+    config = dict(DEFAULTS)
+    try:
+        with open(path, encoding="utf-8") as fh:
+            config.update(json.load(fh))
+    except (OSError, ValueError):
+        pass
+    return config
+
+
+def make_handler(portal, store, static_dir):
+    class Handler(http.server.BaseHTTPRequestHandler):
+        def _send(self, status, payload):
+            body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
+            self.send_response(status)
+            self.send_header("Content-Type", "application/json; charset=utf-8")
+            self.send_header("Content-Length", str(len(body)))
+            self.end_headers()
+            self.wfile.write(body)
+
+        def do_GET(self):
+            parsed = urllib.parse.urlparse(self.path)
+            if parsed.path.startswith("/api/"):
+                params = {k: v[-1] for k, v in
+                          urllib.parse.parse_qs(parsed.query).items()}
+                self._send(*handle_api(parsed.path, params, "GET", None, portal, store))
+                return
+            self._serve_static(parsed.path)
+
+        def _serve_static(self, url_path):
+            rel = url_path.lstrip("/") or "index.html"
+            full = os.path.normpath(os.path.join(static_dir, rel))
+            if not full.startswith(os.path.abspath(static_dir)) or not os.path.isfile(full):
+                self._send(404, {"error": {"reason": "not_found", "message": url_path}})
+                return
+            with open(full, "rb") as fh:
+                data = fh.read()
+            ctype = mimetypes.guess_type(full)[0] or "application/octet-stream"
+            self.send_response(200)
+            self.send_header("Content-Type", ctype)
+            self.send_header("Content-Length", str(len(data)))
+            self.end_headers()
+            self.wfile.write(data)
+
+        def do_POST(self):
+            if not self.path.startswith("/api/"):
+                self._send(404, {"error": {"reason": "not_found", "message": self.path}})
+                return
+            length = int(self.headers.get("Content-Length") or 0)
+            try:
+                body = json.loads(self.rfile.read(length).decode("utf-8")) if length else None
+            except ValueError:
+                self._send(400, {"error": {"reason": "bad_json"}})
+                return
+            parsed = urllib.parse.urlparse(self.path)
+            self._send(*handle_api(parsed.path, {}, "POST", body, portal, store))
+
+        def log_message(self, *args):
+            pass
+
+    return Handler
+
+
+def serve(config, portal=None, store=None, static_dir="static"):
+    portal = portal or PortalClient(config)
+    store = store or FavoritesStore(os.path.join(os.path.dirname(__file__), "favorites.json"))
+    handler = make_handler(portal, store, os.path.abspath(static_dir))
+    return http.server.ThreadingHTTPServer((config["host"], config["port"]), handler)
+
+
+def main():
+    config = load_config()
+    httpd = serve(config)
+    print(f"Serving on {config['host']}:{httpd.server_address[1]}")
+    httpd.serve_forever()
+
+
+if __name__ == "__main__":
+    main()

@@ -1,10 +1,21 @@
 import json
 import os
 import tempfile
+import threading
 import unittest
 import unittest.mock
+import urllib.error
+import urllib.request
 
 import server
+
+CONFIG_HTTP = {
+    "portalUrl": "https://example.test/php/apiRequest.php",
+    "token": "11111111-50b3-4fec-b922-8a50a1d38366",
+    "reg": 66002,
+    "wuid": "marshrut-web",
+    "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10},
+}
 
 
 class FavoritesStoreTest(unittest.TestCase):
@@ -173,6 +184,45 @@ class HandleApiTest(unittest.TestCase):
         status, payload = self.call("/api/favorites", method="POST",
                                     body={"action": "add", "kind": "planet", "id": 1})
         self.assertEqual(status, 400)
+
+
+class HttpServerTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.dir.name, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<h1>ok</h1>")
+        self.store = server.FavoritesStore(os.path.join(self.dir.name, "fav.json"))
+        cfg = dict(CONFIG_HTTP, host="127.0.0.1", port=0)
+        self.httpd = server.serve(cfg, portal=FakePortal(),
+                                  store=self.store, static_dir=self.dir.name)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join()
+        self.dir.cleanup()
+
+    def get(self, url):
+        with urllib.request.urlopen(f"http://127.0.0.1:{self.port}{url}") as resp:
+            return resp.status, resp.read().decode("utf-8")
+
+    def test_serves_api(self):
+        status, body = self.get("/api/routes")
+        self.assertEqual(status, 200)
+        self.assertIn("routes", body)
+
+    def test_serves_index(self):
+        status, body = self.get("/")
+        self.assertEqual(status, 200)
+        self.assertIn("<h1>ok</h1>", body)
+
+    def test_unknown_static_404(self):
+        with self.assertRaises(urllib.error.HTTPError) as ctx:
+            self.get("/missing.css")
+        self.assertEqual(ctx.exception.code, 404)
 
 
 if __name__ == "__main__":
