@@ -302,8 +302,8 @@ async function renderFavorites(view) {
         }
       });
 
-      // Note editing: the pencil (or the chip) swaps the chip for an inline
-      // field and never toggles the collapsed row — these events stop here.
+      // Note editing starts ONLY from the pencil: the chip is a plain label,
+      // so clicking the name/chip just toggles the row as usual.
       let noteBusy = false;
       function startEditNote(event) {
         if (event) { event.preventDefault(); event.stopPropagation(); }
@@ -342,7 +342,6 @@ async function renderFavorites(view) {
         }
       }
       pencil.addEventListener("click", startEditNote);
-      noteChip.addEventListener("click", startEditNote);
       noteInput.addEventListener("click", (event) => event.stopPropagation());
       noteInput.addEventListener("keydown", (event) => {
         event.stopPropagation();
