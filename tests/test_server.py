@@ -139,6 +139,14 @@ class FakePortal:
             {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 575},
             {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 21},
         ]}
+        self.vehicle = {"deviceCode": "X", "vehicle": {
+            "id": 2628, "gosNumber": "КР 583 66", "garageNumber": "кр583",
+            "brand": "ПАЗ", "model": "320415-04 «Vector Next»",
+            "vehicleClass": {"id": 4, "name": "СК", "shortName": "СК"}}}
+        self.vehicle_forecasts = [
+            {"stname": "Академика Вонсовского", "arrt": 99},
+            {"stname": "Михеева", "arrt": 151},
+        ]
 
     def get_routes(self):
         return self.routes
@@ -157,6 +165,12 @@ class FakePortal:
             return [{"id": 1554, "number": "87", "shortName": "87",
                      "name": "Академика Ландау – Горбольница № 7", "routeTypeId": 1}]
         return []
+
+    def get_vehicle(self, device_code):
+        return self.vehicle
+
+    def get_vehicle_forecasts(self, device_code):
+        return self.vehicle_forecasts
 
 
 class HandleApiTest(unittest.TestCase):
@@ -310,6 +324,17 @@ class HandleApiTest(unittest.TestCase):
 
     def test_stop_routes_requires_sid(self):
         status, _ = self.call("/api/stop-routes", {})
+        self.assertEqual(status, 400)
+
+    def test_vehicle_ok(self):
+        status, payload = self.call("/api/vehicle", {"deviceCode": "X"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["vehicle"]["vehicle"]["gosNumber"], "КР 583 66")
+        self.assertEqual(payload["vehicle"]["vehicle"]["vehicleClass"]["name"], "СК")
+        self.assertEqual(payload["forecasts"][0]["stname"], "Академика Вонсовского")
+
+    def test_vehicle_requires_device_code(self):
+        status, _ = self.call("/api/vehicle", {})
         self.assertEqual(status, 400)
 
     def test_favorites_dir_set_and_read(self):

@@ -164,6 +164,31 @@ class PortalClientMethodsTest(unittest.TestCase):
         client._request = mock.Mock(return_value=None)
         self.assertEqual(client.get_station_routes(5830), [])
 
+    def test_get_vehicle_passes_device_code_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(return_value={"deviceCode": "862059066943146",
+                                                  "vehicle": {"id": 1}})
+        client.get_vehicle("862059066943146"); client.get_vehicle("862059066943146")
+        client._request.assert_called_once_with("getVehicleInfo",
+                                                {"deviceCode": "862059066943146"})
+
+    def test_get_vehicle_forecasts_passes_device_code_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=[{"arrt": 99}])
+        client.get_vehicle_forecasts("862059066943146"); client.get_vehicle_forecasts("862059066943146")
+        client._request.assert_called_once_with("getVehicleForecasts",
+                                                {"deviceCode": "862059066943146"})
+
+    def test_empty_vehicle_returns_empty_dict(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_vehicle("X"), {})
+
+    def test_empty_vehicle_forecasts_returns_list(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_vehicle_forecasts("X"), [])
+
     def test_empty_portal_data_returns_empty_list(self):
         client = self.make()
         client._request = mock.Mock(return_value=None)

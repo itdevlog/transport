@@ -8,6 +8,7 @@ const { routeTypeName, routeTypeClass, typeOptions } = VehicleTypes;
 let favorites = { routes: [], stops: [] };
 let refreshTimer = null;
 let routeGen = 0;
+const openVehicles = new Set(); // открытые карточки бортов (переживают авто-обновление)
 
 /* ---------- utilities ---------- */
 
@@ -256,6 +257,7 @@ function renderDirGroup(where, arrivals, stop) {
   group.appendChild(head);
 
   arrivals.forEach((f) => {
+    const item = el("div", { class: "arrival" });
     const row = el("div", { class: "row dir-row" });
     row.appendChild(el("span", { class: "num " + routeTypeClass(f.routeTypeId) },
       [f.routeNumber || f.routeShortName || "?"]));
@@ -270,10 +272,81 @@ function renderDirGroup(where, arrivals, stop) {
     if (clock) text += " (" + clock + ")";
     eta.textContent = text;
     row.appendChild(eta);
-    group.appendChild(row);
+    item.appendChild(row);
+
+    if (f.deviceCode) {
+      const code = f.deviceCode;
+      const card = el("div", { class: "vehicle-card hidden" });
+      item.appendChild(card);
+      row.classList.add("clickable");
+      let loaded = false;
+      const openCard = async () => {
+        card.classList.remove("hidden");
+        row.classList.add("open");
+        openVehicles.add(code);
+        if (loaded) return;
+        loaded = true;
+        card.innerHTML = "";
+        card.appendChild(el("div", { class: "muted" }, ["Загрузка…"]));
+        try {
+          const data = await api("/api/vehicle?deviceCode=" + encodeURIComponent(code));
+          renderVehicleCard(card, data);
+        } catch (err) {
+          card.innerHTML = "";
+          card.appendChild(el("div", { class: "empty muted" },
+            ["Борт недоступен: " + err.message]));
+          loaded = false;
+        }
+      };
+      row.addEventListener("click", () => {
+        if (openVehicles.has(code)) {
+          openVehicles.delete(code);
+          card.classList.add("hidden");
+          row.classList.remove("open");
+        } else {
+          openCard();
+        }
+      });
+      if (openVehicles.has(code)) openCard();
+    }
+
+    group.appendChild(item);
   });
 
   return group;
+}
+
+// Карточка борта: ГРЗ/гараж. номер · Модель · Класс ТС + следующие остановки.
+function renderVehicleCard(card, data) {
+  card.innerHTML = "";
+  const v = (data && data.vehicle && data.vehicle.vehicle) || null;
+  if (!v) {
+    card.appendChild(el("div", { class: "empty muted" }, ["Нет данных о борте"]));
+  } else {
+    const fields = el("div", { class: "vehicle-card__fields" });
+    const numbers = [v.gosNumber, v.garageNumber].filter(Boolean).join(" / ") || "—";
+    const model = [v.brand, v.model].filter(Boolean).join(" ") || "—";
+    const klass = (v.vehicleClass && (v.vehicleClass.name || v.vehicleClass.shortName)) || "—";
+    [["ГРЗ/гараж. номер", numbers], ["Модель", model], ["Класс ТС", klass]].forEach((pair) => {
+      const field = el("div", { class: "vehicle-card__field" });
+      field.appendChild(el("div", { class: "vehicle-card__label" }, [pair[0]]));
+      field.appendChild(el("div", { class: "vehicle-card__value" }, [pair[1]]));
+      fields.appendChild(field);
+    });
+    card.appendChild(fields);
+  }
+  const stops = (data && data.forecasts) || [];
+  if (stops.length) {
+    card.appendChild(el("div", { class: "vehicle-card__stops-title" }, ["Следующие остановки"]));
+    const list = el("div", { class: "vehicle-card__stops" });
+    stops.slice(0, 12).forEach((s) => {
+      const r = el("div", { class: "vehicle-card__stop" });
+      r.appendChild(el("span", { class: "vehicle-card__stop-name" }, [s.stname || "—"]));
+      r.appendChild(el("span", { class: "eta" }, [formatEta(s.arrt)]));
+      list.appendChild(r);
+    });
+    card.appendChild(list);
+  }
 }
 
 function forecastPanel(sid, stop) {

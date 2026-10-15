@@ -155,6 +155,15 @@ def handle_api(path, params, method, body, portal, store):
                 return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
             return 200, {"routes": portal.get_station_routes(sid)}
 
+        if path == "/api/vehicle" and method == "GET":
+            code = params.get("deviceCode")
+            if not code:
+                return 400, {"error": {"reason": "bad_param", "message": "deviceCode required"}}
+            return 200, {
+                "vehicle": portal.get_vehicle(code),
+                "forecasts": portal.get_vehicle_forecasts(code),
+            }
+
         if path == "/api/favorites" and method == "GET":
             return 200, store.load()
 
@@ -200,7 +209,8 @@ DEFAULTS = {
     "portalUrl": "https://xn--80axnakf7a.xn--80acgfbsl1azdqr.xn--p1ai/php/apiRequest.php",
     "token": "11111111-50b3-4fec-b922-8a50a1d38366",
     "reg": 66002, "wuid": "marshrut-web", "host": "0.0.0.0", "port": 8000,
-    "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10},
+    "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10,
+                 "vehicle": 21600, "vehicleForecasts": 30},
 }
 
 

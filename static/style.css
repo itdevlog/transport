@@ -274,6 +274,32 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .type-names { color: var(--muted); font-size: .82rem; font-weight: 400; }
 
+.dir-row.clickable { cursor: pointer; }
+.dir-row.open { background: #f2f6fa; }
+.vehicle-card {
+  margin: 6px 0 12px 14px;
+  padding: 10px 12px;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+}
+.vehicle-card__fields { display: flex; gap: 14px; flex-wrap: wrap; }
+.vehicle-card__field { flex: 1 1 150px; min-width: 110px; }
+.vehicle-card__label { color: var(--muted); font-size: .78rem; }
+.vehicle-card__value { font-weight: 600; color: var(--ink); }
+.vehicle-card__stops-title { margin-top: 10px; color: var(--muted); font-size: .78rem; }
+.vehicle-card__stops { margin-top: 4px; }
+.vehicle-card__stop {
+  display: flex;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 4px 0;
+  border-top: 1px solid var(--line);
+}
+.vehicle-card__stop:first-child { border-top: 0; }
+.vehicle-card__stop-name { color: var(--ink); }
+.vehicle-card .eta { color: var(--muted); font-weight: 600; white-space: nowrap; }
+
 @media (min-width: 720px) {
   #view { padding: 22px; }
 }
