@@ -1,0 +1,9 @@
+{
+  "portalUrl": "https://xn--80axnakf7a.xn--80acgfbsl1azdqr.xn--p1ai/php/apiRequest.php",
+  "token": "11111111-50b3-4fec-b922-8a50a1d38366",
+  "reg": 66002,
+  "wuid": "marshrut-web",
+  "host": "0.0.0.0",
+  "port": 8000,
+  "cacheTtl": { "routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10 }
+}

@@ -1,0 +1,16 @@
+[Unit]
+Description=Marshrut web wrapper (Yekaterinburg transport)
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=/opt/marshrut
+ExecStart=/usr/bin/python3 /opt/marshrut/server.py
+Restart=on-failure
+RestartSec=3
+User=marshrut
+Group=marshrut
+
+[Install]
+WantedBy=multi-user.target
