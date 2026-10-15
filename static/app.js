@@ -17,6 +17,31 @@ function routeTypeClass(id) {
   return VEHICLE_TYPES[id] ? "type-" + id : "type-other";
 }
 
+function typeIdsFromRoutes(routes) {
+  const ids = new Set();
+  (routes || []).forEach((r) => { if (r && r.routeTypeId) ids.add(r.routeTypeId); });
+  return [...ids].sort((a, b) => a - b);
+}
+
+function fillTypeDots(box, ids) {
+  box.innerHTML = "";
+  if (!ids || !ids.length) { box.classList.add("hidden"); return; }
+  box.classList.remove("hidden");
+  ids.forEach((id) => {
+    box.appendChild(el("span", { class: "dot " + routeTypeClass(id), title: routeTypeName(id) }));
+  });
+  box.appendChild(el("span", { class: "type-names" }, [ids.map(routeTypeName).join(" · ")]));
+}
+
+async function loadStopTypes(sid) {
+  try {
+    const data = await api("/api/stop-routes?sid=" + encodeURIComponent(sid));
+    return typeIdsFromRoutes(data.routes);
+  } catch (err) {
+    return [];
+  }
+}
+
 function formatEta(sec) {
   if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return "—";
   const min = Math.floor(sec / 60);
@@ -138,7 +163,7 @@ function enqueueStar(kind, id, name) {
 
 /* ---------- forecast rendering ---------- */
 
-function renderForecastList(container, forecasts) {
+function renderForecastList(container, forecasts, stop) {
   container.innerHTML = "";
   const items = (forecasts || []).slice().sort((a, b) => {
     const av = typeof a.arrivalTimeInSec === "number" ? a.arrivalTimeInSec : Infinity;
@@ -149,13 +174,98 @@ function renderForecastList(container, forecasts) {
     container.appendChild(el("div", { class: "empty" }, ["Нет данных о прибытии."]));
     return;
   }
+  const groups = new Map();
   items.forEach((f) => {
-    const row = el("div", { class: "row" });
+    const where = f.whereGo || f.routeName || "—";
+    if (!groups.has(where)) groups.set(where, []);
+    groups.get(where).push(f);
+  });
+  groups.forEach((arrivals, where) => {
+    container.appendChild(renderDirGroup(where, arrivals, stop));
+  });
+}
+
+function renderDirGroup(where, arrivals, stop) {
+  const group = el("div", { class: "dir-group" });
+  const head = el("div", { class: "dir-head" });
+  const labelEl = el("span", { class: "dir-label" });
+  const terminalEl = el("span", { class: "dir-terminal" });
+  head.appendChild(labelEl);
+  head.appendChild(terminalEl);
+
+  function paint() {
+    const custom = (stop && stop.dirs && stop.dirs[where]) || "";
+    labelEl.textContent = "→ " + (custom || where);
+    terminalEl.textContent = custom ? "(" + where + ")" : "";
+  }
+
+  if (stop) {
+    const input = el("input", {
+      class: "dir-input hidden", type: "text", maxlength: "60",
+      placeholder: "подпись направления", "aria-label": "Подпись направления",
+    });
+    const pencil = el("button", { class: "note-edit", title: "Подпись направления",
+      "aria-label": "Подпись направления" }, ["✎"]);
+    head.appendChild(input);
+    head.appendChild(pencil);
+    let busy = false;
+
+    function showLabel() {
+      input.classList.add("hidden");
+      pencil.classList.remove("hidden");
+      labelEl.classList.remove("hidden");
+      terminalEl.classList.remove("hidden");
+      paint();
+    }
+    function startEdit(event) {
+      event.preventDefault();
+      event.stopPropagation();
+      input.value = (stop.dirs && stop.dirs[where]) || "";
+      input.classList.remove("hidden");
+      pencil.classList.add("hidden");
+      labelEl.classList.add("hidden");
+      terminalEl.classList.add("hidden");
+      input.focus();
+      input.select();
+    }
+    async function commit() {
+      if (busy) return;
+      busy = true;
+      try {
+        const data = await api("/api/favorites", {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ action: "dir", kind: "stop", id: stop.id, where: where, label: input.value }),
+        });
+        favorites = { routes: data.routes || [], stops: data.stops || [] };
+        const fresh = favorites.stops.find((x) => String(x.id) === String(stop.id));
+        stop.dirs = (fresh && fresh.dirs) || {};
+        showLabel();
+      } catch (err) {
+        showBanner("Подпись: " + err.message, "error");
+        showLabel();
+      } finally {
+        busy = false;
+      }
+    }
+    pencil.addEventListener("click", startEdit);
+    input.addEventListener("click", (event) => event.stopPropagation());
+    input.addEventListener("keydown", (event) => {
+      event.stopPropagation();
+      if (event.key === "Enter") { event.preventDefault(); commit(); input.blur(); }
+      else if (event.key === "Escape") { event.preventDefault(); showLabel(); }
+    });
+    input.addEventListener("blur", () => { if (!input.classList.contains("hidden")) commit(); });
+  }
+
+  paint();
+  group.appendChild(head);
+
+  arrivals.forEach((f) => {
+    const row = el("div", { class: "row dir-row" });
     row.appendChild(el("span", { class: "num " + routeTypeClass(f.routeTypeId) },
       [f.routeNumber || f.routeShortName || "?"]));
     const main = el("div", { class: "main" });
-    main.appendChild(el("div", { class: "name" },
-      [f.whereGo ? "→ " + f.whereGo : (f.routeName || "")]));
     if (f.lastStation) {
       main.appendChild(el("div", { class: "meta" }, ["от: " + f.lastStation]));
     }
@@ -166,11 +276,13 @@ function renderForecastList(container, forecasts) {
     if (clock) text += " (" + clock + ")";
     eta.textContent = text;
     row.appendChild(eta);
-    container.appendChild(row);
+    group.appendChild(row);
   });
+
+  return group;
 }
 
-function forecastPanel(sid) {
+function forecastPanel(sid, stop) {
   const list = el("div");
   let last = null;
   let lastAt = null;
@@ -181,11 +293,11 @@ function forecastPanel(sid) {
       last = data.forecasts || [];
       lastAt = new Date();
       lastError = null;
-      renderForecastList(list, last);
+      renderForecastList(list, last, stop);
     } catch (err) {
       lastError = err;
       if (last) {
-        renderForecastList(list, last);
+        renderForecastList(list, last, stop);
       } else {
         list.innerHTML = "";
         list.appendChild(el("div", { class: "empty muted" }, ["Прогноз недоступен: " + err.message]));
@@ -261,6 +373,8 @@ async function renderFavorites(view) {
       const nameLine = el("div", { class: "name" });
       nameLine.appendChild(document.createTextNode(s.name || ("Остановка " + s.id)));
       nameLine.appendChild(noteChip);
+      const typeDots = el("span", { class: "type-dots hidden" });
+      nameLine.appendChild(typeDots);
       const noteInput = el("input", {
         class: "note-input hidden", type: "text", placeholder: "заметка",
         maxlength: "60", "aria-label": "Заметка к остановке",
@@ -276,7 +390,11 @@ async function renderFavorites(view) {
       head.appendChild(pencil);
       head.appendChild(starButton("stop", s.id, s.name));
 
-      const panel = forecastPanel(s.id);
+      const panel = forecastPanel(s.id, s);
+      loadStopTypes(s.id).then((ids) => {
+        if (gen !== routeGen) return;
+        fillTypeDots(typeDots, ids);
+      });
       panels.set(sid, panel);
       const details = el("div", { class: "stop-details hidden" });
       details.appendChild(panel.list);
@@ -517,14 +635,22 @@ async function renderStop(view, sid) {
   const gen = routeGen;
   const fav = favorites.stops.find((s) => String(s.id) === String(sid));
   view.appendChild(el("h2", {}, [fav && fav.name ? fav.name : ("Остановка " + sid)]));
-  view.appendChild(el("div", { class: "sub" }, ["Прибытие по всем маршрутам"]));
+  const subLine = el("div", { class: "sub" }, ["Прибытие по всем маршрутам"]);
+  const typeDots = el("span", { class: "type-dots hidden" });
+  subLine.appendChild(document.createTextNode(" "));
+  subLine.appendChild(typeDots);
+  view.appendChild(subLine);
   const starRow = el("div", { class: "row" });
   starRow.appendChild(starButton("stop", Number(sid), fav && fav.name));
   starRow.appendChild(el("div", { class: "main" }, ["Добавить остановку в избранное"]));
   view.appendChild(starRow);
 
-  const panel = forecastPanel(sid);
+  const panel = forecastPanel(sid, fav || null);
   view.appendChild(panel.list);
+  loadStopTypes(sid).then((ids) => {
+    if (gen !== routeGen) return;
+    fillTypeDots(typeDots, ids);
+  });
 
   async function refresh() {
     const result = await panel.tick();
