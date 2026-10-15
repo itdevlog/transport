@@ -620,7 +620,17 @@ async function renderRoute(view, id) {
   headerRow.appendChild(el("div", { class: "main" }, ["Добавить маршрут в избранное"]));
   view.appendChild(headerRow);
 
-  const subroutes = route.subroutes || [];
+  const subroutes = (route.subroutes || []).slice()
+    .sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
+
+  function directionLabel(sub) {
+    const st = sub.stations || [];
+    const from = st.length ? (st[0].name || "") : "";
+    const to = st.length ? (st[st.length - 1].name || "") : "";
+    if (from && to && from !== to) return from + " ▸ " + to;
+    return sub.name || "Направление";
+  }
+
   if (!subroutes.length) {
     view.appendChild(el("div", { class: "empty" }, ["Нет данных о направлениях."]));
     return;
@@ -656,7 +666,7 @@ async function renderRoute(view, id) {
     tabs.innerHTML = "";
     subroutes.forEach((sub, index) => {
       const button = el("button", { class: index === active ? "active" : "" },
-        [sub.name || ("Направление " + (index + 1))]);
+        [directionLabel(sub)]);
       button.addEventListener("click", () => { active = index; drawTabs(); });
       tabs.appendChild(button);
     });
