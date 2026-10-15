@@ -93,7 +93,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .num.type-1 { background: #2f9e44; }
 .num.type-2 { background: #1565c0; }
-.num.type-3 { background: #c8102e; }
+.num.type-4 { background: #c8102e; }
 .num.type-other { background: #6b7785; }
 
 .star {
@@ -269,7 +269,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .type-dots .dot.type-1 { background: #2f9e44; }
 .type-dots .dot.type-2 { background: #1565c0; }
-.type-dots .dot.type-3 { background: #c8102e; }
+.type-dots .dot.type-4 { background: #c8102e; }
 .type-dots .dot.type-other { background: #6b7785; }
 
 .type-names { color: var(--muted); font-size: .82rem; font-weight: 400; }

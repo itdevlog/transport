@@ -1,21 +1,15 @@
 "use strict";
 
-const VEHICLE_TYPES = { 1: "Автобус", 2: "Троллейбус", 3: "Трамвай" };
 const FORECAST_REFRESH_MS = 20000;
+
+// Таблица видов транспорта живёт в vehicle-types.js (одна точка правды).
+const { routeTypeName, routeTypeClass, typeOptions } = VehicleTypes;
 
 let favorites = { routes: [], stops: [] };
 let refreshTimer = null;
 let routeGen = 0;
 
 /* ---------- utilities ---------- */
-
-function routeTypeName(id) {
-  return VEHICLE_TYPES[id] || "Другое";
-}
-
-function routeTypeClass(id) {
-  return VEHICLE_TYPES[id] ? "type-" + id : "type-other";
-}
 
 function typeIdsFromRoutes(routes) {
   const ids = new Set();
@@ -494,7 +488,7 @@ async function renderRoutes(view) {
   const controls = el("div", { class: "controls" });
   const search = el("input", { type: "search", placeholder: "Поиск по номеру или названию" });
   const typeSel = el("select");
-  [["", "Все виды"], ["1", "Автобус"], ["2", "Троллейбус"], ["3", "Трамвай"]].forEach((pair) => {
+  [["", "Все виды"]].concat(typeOptions()).forEach((pair) => {
     const option = el("option", { value: pair[0] }, [pair[1]]);
     typeSel.appendChild(option);
   });
