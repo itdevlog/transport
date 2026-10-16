@@ -488,6 +488,34 @@ class FavoritesCookieTest(unittest.TestCase):
         self.assertRegex(uid, r"^[0-9a-f]{32}$")
 
 
+class MigrationTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self.dir.cleanup)
+        self.legacy = os.path.join(self.dir.name, "favorites.json")
+        self.db = os.path.join(self.dir.name, "profiles.db")
+
+    def test_legacy_adopted_once_and_renamed(self):
+        store = server.FavoritesStore(self.legacy)
+        store.add("stop", {"id": 5830, "name": "Академия тенниса"})
+        pstore = profiles.ProfilesStore(self.db)
+        server._maybe_migrate(pstore, store, "a" * 32)
+        self.assertEqual([s["id"] for s in pstore.get("a" * 32)["stops"]], [5830])
+        self.assertFalse(os.path.exists(self.legacy))
+        self.assertTrue(os.path.exists(self.legacy + ".migrated"))
+        server._maybe_migrate(pstore, store, "b" * 32)
+        self.assertEqual(pstore.get("b" * 32)["stops"], [])
+
+    def test_corrupt_legacy_is_ignored(self):
+        with open(self.legacy, "w", encoding="utf-8") as fh:
+            fh.write("not json")
+        store = server.FavoritesStore(self.legacy)
+        pstore = profiles.ProfilesStore(self.db)
+        server._maybe_migrate(pstore, store, "c" * 32)
+        self.assertEqual(pstore.get("c" * 32)["stops"], [])
+        self.assertTrue(os.path.exists(self.legacy + ".migrated"))
+
+
 class LoadConfigTest(unittest.TestCase):
     def setUp(self):
         self.dir = tempfile.TemporaryDirectory()

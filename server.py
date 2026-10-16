@@ -29,6 +29,10 @@ class FavoritesStore:
         self._path = path
         self._lock = threading.Lock()
 
+    @property
+    def path(self):
+        return self._path
+
     def load(self):
         with self._lock:
             return self._read()
@@ -132,6 +136,25 @@ class _LegacyFavorites:
 
     def set_dir_label(self, uid, kind, item_id, where, label):
         return self._store.set_dir_label(kind, item_id, where, label)
+
+
+def _maybe_migrate(profiles, store, uid):
+    """Одноразово переносит общий favorites.json в профиль первого браузера."""
+    legacy = store.path
+    if not os.path.exists(legacy):
+        return
+    try:
+        data = store.load()
+        current = profiles.get(uid)
+        empty = not current["routes"] and not current["stops"]
+        if empty and (data.get("routes") or data.get("stops")):
+            profiles.save(uid, data)
+    except (OSError, ValueError):
+        pass
+    try:
+        os.replace(legacy, legacy + ".migrated")
+    except OSError:
+        pass
 
 
 def _as_int(value):
@@ -288,6 +311,8 @@ def handle_api(path, params, method, body, portal, store, catalog=None,
             return 200, {"status": catalog.refresh_async(portal)}
 
         if path == "/api/favorites":
+            if profiles is not None:
+                _maybe_migrate(profiles, store, uid)
             backend = profiles if profiles is not None else _LegacyFavorites(store)
             if method == "GET":
                 return 200, backend.get(uid)
