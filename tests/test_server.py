@@ -509,3 +509,30 @@ class CatalogIntegrationTest(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class CatalogWiringTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.dir.name, "index.html"), "w") as fh:
+            fh.write("<h1>ok</h1>")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_serve_accepts_catalog_and_serves_from_it(self):
+        c = catalog.Catalog(os.path.join(self.dir.name, "catalog.db"))
+        c.rebuild_from([{"id": 1, "name": "A"}], [{"id": 9, "number": "9", "routeTypeId": 1}],
+                       {9: {"subroutes": [{"stations": [{"id": 1}]}]}})
+        cfg = dict(CONFIG_HTTP, host="127.0.0.1", port=0)
+        httpd = server.serve(cfg, portal=FakePortal(), store=server.FavoritesStore(
+            os.path.join(self.dir.name, "f.json")), static_dir=self.dir.name, catalog=c)
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            port = httpd.server_address[1]
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}/api/routes", timeout=5) as r:
+                body = json.loads(r.read())
+            self.assertEqual([x["number"] for x in body["routes"]], ["9"])
+        finally:
+            httpd.shutdown()
+            httpd.server_close()

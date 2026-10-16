@@ -3,3 +3,4 @@ __pycache__/
 .superpowers/
 favorites.json
 config.local.json
+catalog.db

@@ -34,7 +34,8 @@ chown marshrut:marshrut /opt/transport/config.local.json
 
 `systemd/marshrut.service` уже содержит нужный hardening
 (`ProtectSystem=strict`, `ProtectHome=yes`, `ReadWritePaths=/opt/transport` —
-без последнего не запишется `favorites.json`).
+без последнего не запишутся ни `favorites.json`, ни `catalog.db`). База
+зеркала по умолчанию создаётся рядом с `server.py`, т.е. в `/opt/transport`.
 
 ```bash
 cp /opt/transport/systemd/marshrut.service /etc/systemd/system/marshrut.service
@@ -85,7 +86,12 @@ systemctl reload caddy
 curl -s -o /dev/null -w "%{http_code}\n" https://ekb.3125.ru/
 curl -s -o /dev/null -w "%{http_code}\n" https://ekb.3125.ru/app.js
 curl -s https://ekb.3125.ru/api/forecast?sid=5830 | head -c 200
+curl -s https://ekb.3125.ru/api/catalog
 ```
+
+`/api/catalog` покажет состояние зеркала (`building`, `lastRefresh`, `counts`).
+Пока идёт первое фоновое наполнение, справочные запросы отвечает портал;
+при желании форсировать — `curl -s -X POST https://ekb.3125.ru/api/refresh`.
 
 ## Обновление
 

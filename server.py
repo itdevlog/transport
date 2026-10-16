@@ -4,8 +4,10 @@ import mimetypes
 import os
 import tempfile
 import threading
+import time
 import urllib.parse
 
+import catalog
 from portal import PortalClient, PortalError
 
 
@@ -245,6 +247,7 @@ DEFAULTS = {
     "reg": 66002, "wuid": "marshrut-web", "host": "0.0.0.0", "port": 8000,
     "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10,
                  "vehicle": 21600, "vehicleForecasts": 30},
+    "catalog": {"enabled": True, "path": "catalog.db", "refreshSeconds": 86400},
 }
 
 
@@ -267,7 +270,7 @@ def load_config(path="config.json"):
     return config
 
 
-def make_handler(portal, store, static_dir):
+def make_handler(portal, store, static_dir, catalog=None):
     class Handler(http.server.BaseHTTPRequestHandler):
         def _send(self, status, payload):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
@@ -282,7 +285,7 @@ def make_handler(portal, store, static_dir):
             if parsed.path.startswith("/api/"):
                 params = {k: v[-1] for k, v in
                           urllib.parse.parse_qs(parsed.query).items()}
-                self._send(*handle_api(parsed.path, params, "GET", None, portal, store))
+                self._send(*handle_api(parsed.path, params, "GET", None, portal, store, catalog))
                 return
             self._serve_static(parsed.path)
 
@@ -312,7 +315,7 @@ def make_handler(portal, store, static_dir):
                 self._send(400, {"error": {"reason": "bad_json"}})
                 return
             parsed = urllib.parse.urlparse(self.path)
-            self._send(*handle_api(parsed.path, {}, "POST", body, portal, store))
+            self._send(*handle_api(parsed.path, {}, "POST", body, portal, store, catalog))
 
         def log_message(self, *args):
             pass
@@ -320,10 +323,28 @@ def make_handler(portal, store, static_dir):
     return Handler
 
 
-def serve(config, portal=None, store=None, static_dir="static"):
+def _catalog_watchdog(cat, portal, interval):
+    """Daemon loop: rebuild the mirror on first run and then every interval."""
+    while True:
+        try:
+            if cat.should_refresh(time.time(), interval):
+                cat.refresh_async(portal)
+        except Exception:  # noqa: BLE001 - the watchdog must never die
+            pass
+        time.sleep(interval if interval and interval > 0 else 300)
+
+
+def serve(config, portal=None, store=None, static_dir="static", catalog=None):
     portal = portal or PortalClient(config)
     store = store or FavoritesStore(os.path.join(os.path.dirname(__file__), "favorites.json"))
-    handler = make_handler(portal, store, os.path.abspath(static_dir))
+    cat_cfg = config.get("catalog") or {}
+    if catalog is None and cat_cfg.get("enabled", False):
+        catalog = catalog.Catalog(os.path.join(os.path.dirname(__file__),
+                                               cat_cfg.get("path", "catalog.db")))
+        interval = cat_cfg.get("refreshSeconds", 86400)
+        threading.Thread(target=_catalog_watchdog,
+                         args=(catalog, portal, interval), daemon=True).start()
+    handler = make_handler(portal, store, os.path.abspath(static_dir), catalog)
     return http.server.ThreadingHTTPServer((config["host"], config["port"]), handler)
 
 
