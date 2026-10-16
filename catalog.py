@@ -225,3 +225,99 @@ class Catalog:
         result = self.rebuild_from(stops, routes, details)
         self._last_error = None
         return result
+
+    @staticmethod
+    def _route_row(row):
+        return {
+            "id": row["id"],
+            "number": row["number"],
+            "name": row["name"],
+            "shortName": row["short_name"],
+            "routeTypeId": row["route_type_id"],
+            "company": row["company"],
+            "fromStation": row["from_station"],
+            "toStation": row["to_station"],
+            "price": row["price"],
+        }
+
+    @staticmethod
+    def _station_row(row):
+        return {
+            "id": row["id"],
+            "name": row["name"],
+            "description": row["description"],
+            "adress": row["adress"],
+            "direction": row["direction"],
+            "lat": row["lat"],
+            "lng": row["lng"],
+            "shortname": row["shortname"],
+            "tags": [],
+        }
+
+    def all_routes(self, route_type=None):
+        conn = self._connect()
+        try:
+            if route_type is None:
+                rows = conn.execute("SELECT * FROM routes").fetchall()
+            else:
+                rows = conn.execute(
+                    "SELECT * FROM routes WHERE route_type_id = ?", (route_type,)
+                ).fetchall()
+            return [self._route_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    def get_route(self, route_id):
+        conn = self._connect()
+        try:
+            row = conn.execute(
+                "SELECT payload FROM route_detail WHERE route_id = ?", (route_id,)
+            ).fetchone()
+        finally:
+            conn.close()
+        if row is None:
+            return {}
+        try:
+            return json.loads(row[0])
+        except (TypeError, ValueError):
+            return {}
+
+    def search_stations(self, q):
+        needle = (q or "").strip().lower()
+        conn = self._connect()
+        try:
+            rows = conn.execute("SELECT * FROM stops").fetchall()
+        finally:
+            conn.close()
+        result = []
+        for r in rows:
+            if needle and needle not in (r["name"] or "").lower():
+                continue
+            result.append(self._station_row(r))
+        return result
+
+    def routes_for_stop(self, sid):
+        conn = self._connect()
+        try:
+            rows = conn.execute(
+                "SELECT r.* FROM routes r"
+                " JOIN stop_routes sr ON sr.route_id = r.id"
+                " WHERE sr.stop_id = ?",
+                (sid,),
+            ).fetchall()
+            return [self._route_row(r) for r in rows]
+        finally:
+            conn.close()
+
+    def stops_with_routes(self, q):
+        return [
+            {
+                "id": s["id"],
+                "name": s["name"],
+                "lat": s["lat"],
+                "lng": s["lng"],
+                "direction": s["direction"],
+                "routes": self.routes_for_stop(s["id"]),
+            }
+            for s in self.search_stations(q)
+        ]

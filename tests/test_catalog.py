@@ -106,3 +106,43 @@ class CatalogRebuildTest(unittest.TestCase):
         self.assertEqual(result, {"stops": 2, "routes": 1})
         self.assertEqual(p.calls, [10])
         self.assertEqual(self.c.counts(), {"stops": 2, "routes": 1})
+
+
+class CatalogQueriesTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.c = catalog.Catalog(os.path.join(self.dir.name, "catalog.db"))
+        self.c.rebuild_from(
+            [{"id": 513, "name": "Площадь 1905 года", "lat": 56.8, "lng": 60.5, "direction": 71},
+             {"id": 5830, "name": "Академия тенниса", "lat": 56.7, "lng": 60.5, "direction": -29}],
+            [{"id": 1554, "number": "87", "name": "Академика Ландау – Горбольница № 7",
+              "shortName": "А-87", "routeTypeId": 1},
+             {"id": 2000, "number": "7", "name": "Трамвай", "shortName": "Тм-7", "routeTypeId": 4}],
+            {1554: {"subroutes": [{"stations": [{"id": 513}, {"id": 5830}, {"id": 513}]}]},
+             2000: {"subroutes": [{"stations": [{"id": 513}]}]}},
+        )
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_search_is_case_insensitive_cyrillic(self):
+        names = [s["name"] for s in self.c.search_stations("площадь")]
+        self.assertEqual(names, ["Площадь 1905 года"])
+
+    def test_search_blank_returns_all(self):
+        self.assertEqual(len(self.c.search_stations("")), 2)
+
+    def test_routes_for_stop_dedup_and_type_filter(self):
+        routes = self.c.routes_for_stop(513)
+        self.assertEqual(sorted(r["number"] for r in routes), ["7", "87"])
+        self.assertEqual([r["number"] for r in self.c.all_routes(4)], ["7"])
+        self.assertEqual(self.c.all_routes(1)[0]["number"], "87")
+
+    def test_get_route_returns_payload(self):
+        self.assertEqual(self.c.get_route(1554)["subroutes"][0]["stations"][1]["id"], 5830)
+        self.assertEqual(self.c.get_route(999), {})
+
+    def test_stops_with_routes_shape(self):
+        stops = {s["id"]: s for s in self.c.stops_with_routes("академия")}
+        self.assertEqual(list(stops), [5830])
+        self.assertEqual(stops[5830]["routes"][0]["routeTypeId"], 1)
