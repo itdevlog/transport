@@ -50,3 +50,38 @@ class ProfilesStoreTest(unittest.TestCase):
         self.store.save("a" * 32, {"routes": [], "stops": [{"id": 1}]})
         self.store.save("a" * 32, {"routes": [], "stops": []})
         self.assertEqual(self.store.get("a" * 32)["stops"], [])
+
+
+class ProfilesMutationTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.store = profiles.ProfilesStore(os.path.join(self.dir.name, "p.db"))
+        self.uid = "c" * 32
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_add_and_dedupe(self):
+        self.store.add(self.uid, "stop", {"id": 5830, "name": "Академия тенниса"})
+        self.store.add(self.uid, "stop", {"id": 5830, "name": "dup"})
+        self.assertEqual(len(self.store.get(self.uid)["stops"]), 1)
+
+    def test_remove(self):
+        self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
+        self.store.remove(self.uid, "stop", 5830)
+        self.assertEqual(self.store.get(self.uid)["stops"], [])
+
+    def test_set_note_persists_and_clears(self):
+        self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
+        self.store.set_note(self.uid, "stop", 5830, "в школу")
+        self.assertEqual(self.store.get(self.uid)["stops"][0]["note"], "в школу")
+        self.store.set_note(self.uid, "stop", 5830, "")
+        self.assertNotIn("note", self.store.get(self.uid)["stops"][0])
+
+    def test_set_dir_label_and_clear(self):
+        self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
+        self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "домой")
+        self.assertEqual(self.store.get(self.uid)["stops"][0]["dirs"],
+                         {"Академика Ландау": "домой"})
+        self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "")
+        self.assertNotIn("dirs", self.store.get(self.uid)["stops"][0])

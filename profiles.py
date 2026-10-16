@@ -79,3 +79,55 @@ class ProfilesStore:
                 )
         finally:
             conn.close()
+
+    def add(self, uid, kind, item):
+        key = KIND_KEYS[kind]
+        data = self.get(uid)
+        item_id = str(item.get("id"))
+        if not any(str(existing.get("id")) == item_id for existing in data[key]):
+            data[key].append(item)
+        self.save(uid, data)
+        return data
+
+    def remove(self, uid, kind, item_id):
+        key = KIND_KEYS[kind]
+        data = self.get(uid)
+        data[key] = [
+            existing
+            for existing in data[key]
+            if str(existing.get("id")) != str(item_id)
+        ]
+        self.save(uid, data)
+        return data
+
+    def set_note(self, uid, kind, item_id, note):
+        key = KIND_KEYS[kind]
+        note = (note or "").strip()
+        data = self.get(uid)
+        for item in data[key]:
+            if str(item.get("id")) == str(item_id):
+                if note:
+                    item["note"] = note
+                else:
+                    item.pop("note", None)
+        self.save(uid, data)
+        return data
+
+    def set_dir_label(self, uid, kind, item_id, where, label):
+        key = KIND_KEYS[kind]
+        where = (where or "").strip()
+        label = (label or "").strip()
+        data = self.get(uid)
+        for item in data[key]:
+            if str(item.get("id")) == str(item_id):
+                dirs = item.get("dirs") or {}
+                if label:
+                    dirs[where] = label
+                else:
+                    dirs.pop(where, None)
+                if dirs:
+                    item["dirs"] = dirs
+                else:
+                    item.pop("dirs", None)
+        self.save(uid, data)
+        return data
