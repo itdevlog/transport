@@ -704,3 +704,48 @@ class CatalogConfiguredStartupTest(unittest.TestCase):
         self.assertEqual(server._watchdog_sleep(86400), 300)
         self.assertEqual(server._watchdog_sleep(60), 60)
         self.assertEqual(server._watchdog_sleep(0), 300)
+
+
+class ProfilesConfiguredStartupTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.dir.name, "index.html"), "w") as fh:
+            fh.write("<h1>ok</h1>")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def _serve(self, db_path):
+        cfg = dict(CONFIG_HTTP, host="127.0.0.1", port=0,
+                   profiles={"path": db_path})
+        return server.serve(cfg, portal=FakePortal(),
+                            store=server.FavoritesStore(os.path.join(self.dir.name, "f.json")),
+                            static_dir=self.dir.name)
+
+    def _get(self, httpd, path):
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            port = httpd.server_address[1]
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+                return r.status, json.loads(r.read()), r.headers
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_serve_creates_profiles_store(self):
+        db = os.path.join(self.dir.name, "profiles.db")
+        httpd = self._serve(db)
+        status, body, headers = self._get(httpd, "/api/favorites")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"routes": [], "stops": []})
+        self.assertIn("marshrut_uid=", headers.get("Set-Cookie", ""))
+        self.assertTrue(os.path.exists(db))
+
+    def test_corrupt_profiles_db_falls_back(self):
+        db = os.path.join(self.dir.name, "profiles.db")
+        with open(db, "wb") as fh:
+            fh.write(b"not a database")
+        httpd = self._serve(db)
+        status, body, _ = self._get(httpd, "/api/favorites")
+        self.assertEqual(status, 200)
+        self.assertEqual(body, {"routes": [], "stops": []})

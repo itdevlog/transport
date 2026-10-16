@@ -34,8 +34,9 @@ chown marshrut:marshrut /opt/transport/config.local.json
 
 `systemd/marshrut.service` уже содержит нужный hardening
 (`ProtectSystem=strict`, `ProtectHome=yes`, `ReadWritePaths=/opt/transport` —
-без последнего не запишутся ни `favorites.json`, ни `catalog.db`). База
-зеркала по умолчанию создаётся рядом с `server.py`, т.е. в `/opt/transport`.
+без последнего не запишутся ни `catalog.db`, ни `profiles.db`). Базы
+зеркала и профилей по умолчанию создаются рядом с `server.py`, т.е. в
+`/opt/transport`.
 
 ```bash
 cp /opt/transport/systemd/marshrut.service /etc/systemd/system/marshrut.service
@@ -100,5 +101,5 @@ git -C /opt/transport pull
 systemctl restart marshrut
 ```
 
-Конфликтов по `config.local.json` и `favorites.json` не будет — они
-не отслеживаются git.
+Конфликтов по `config.local.json`, `catalog.db` и `profiles.db` не будет —
+они не отслеживаются git.

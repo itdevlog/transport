@@ -4,3 +4,5 @@ __pycache__/
 favorites.json
 config.local.json
 catalog.db
+profiles.db
+favorites.json.migrated

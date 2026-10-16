@@ -360,6 +360,7 @@ DEFAULTS = {
     "cacheTtl": {"routes": 21600, "route": 21600, "stations": 21600, "forecasts": 10,
                  "vehicle": 21600, "vehicleForecasts": 30},
     "catalog": {"enabled": True, "path": "catalog.db", "refreshSeconds": 86400},
+    "profiles": {"path": "profiles.db"},
 }
 
 
@@ -477,6 +478,13 @@ def _catalog_watchdog(cat, portal, interval):
 def serve(config, portal=None, store=None, static_dir="static", catalog=None, profiles=None):
     portal = portal or PortalClient(config)
     store = store or FavoritesStore(os.path.join(os.path.dirname(__file__), "favorites.json"))
+    if profiles is None:
+        prof_cfg = config.get("profiles") or {}
+        try:
+            profiles = ProfilesStore(
+                os.path.join(os.path.dirname(__file__), prof_cfg.get("path", "profiles.db")))
+        except (sqlite3.Error, OSError):
+            profiles = None
     cat_cfg = config.get("catalog") or {}
     if catalog is None and cat_cfg.get("enabled", False):
         try:
