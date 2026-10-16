@@ -87,6 +87,7 @@ class Catalog:
                     conn.execute("DROP TABLE IF EXISTS " + table)
                 conn.commit()
             conn.executescript(_SCHEMA)
+            conn.execute("PRAGMA journal_mode=WAL")
             conn.execute(
                 "INSERT OR REPLACE INTO meta(key, value) VALUES('schema_version', ?)",
                 (str(SCHEMA_VERSION),),
@@ -337,14 +338,29 @@ class Catalog:
             conn.close()
 
     def stops_with_routes(self, q):
-        return [
-            {
-                "id": s["id"],
-                "name": s["name"],
-                "lat": s["lat"],
-                "lng": s["lng"],
-                "direction": s["direction"],
-                "routes": self.routes_for_stop(s["id"]),
-            }
-            for s in self.search_stations(q)
-        ]
+        needle = (q or "").strip().lower()
+        conn = self._connect()
+        try:
+            rows = conn.execute("SELECT * FROM stops").fetchall()
+            links = conn.execute(
+                "SELECT sr.stop_id, r.* FROM stop_routes sr"
+                " JOIN routes r ON r.id = sr.route_id"
+            ).fetchall()
+        finally:
+            conn.close()
+        by_stop = {}
+        for r in links:
+            by_stop.setdefault(r["stop_id"], []).append(self._route_row(r))
+        result = []
+        for r in rows:
+            if needle and needle not in (r["name"] or "").lower():
+                continue
+            result.append({
+                "id": r["id"],
+                "name": r["name"],
+                "lat": r["lat"],
+                "lng": r["lng"],
+                "direction": r["direction"],
+                "routes": by_stop.get(r["id"], []),
+            })
+        return result

@@ -1,6 +1,8 @@
 import os
+import sqlite3
 import tempfile
 import unittest
+import unittest.mock
 
 import catalog
 
@@ -184,3 +186,39 @@ class _BadPortal:
 
     def get_route(self, rid):
         raise RuntimeError("boom")
+
+
+class CatalogStoreFixesTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.path = os.path.join(self.dir.name, "catalog.db")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_init_sets_wal_journal_mode(self):
+        catalog.Catalog(self.path)
+        conn = sqlite3.connect(self.path)
+        try:
+            mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+        finally:
+            conn.close()
+        self.assertEqual(mode.lower(), "wal")
+
+    def test_stops_with_routes_opens_one_connection(self):
+        c = catalog.Catalog(self.path)
+        c.rebuild_from(
+            [{"id": 1, "name": "A"}], [{"id": 9, "number": "9", "routeTypeId": 1}],
+            {9: {"subroutes": [{"stations": [{"id": 1}]}]}},
+        )
+        calls = []
+        real_connect = sqlite3.connect
+
+        def counting(*args, **kwargs):
+            calls.append(1)
+            return real_connect(*args, **kwargs)
+
+        with unittest.mock.patch.object(catalog.sqlite3, "connect", counting):
+            result = c.stops_with_routes("")
+        self.assertEqual(len(calls), 1)
+        self.assertEqual([r["number"] for r in result[0]["routes"]], ["9"])

@@ -2,12 +2,13 @@ import http.server
 import json
 import mimetypes
 import os
+import sqlite3
 import tempfile
 import threading
 import time
 import urllib.parse
 
-import catalog
+import catalog as catalog_module
 from portal import PortalClient, PortalError
 
 
@@ -119,47 +120,72 @@ def _resolve_name(portal, kind, item_id):
 
 
 def _catalog_ready(catalog):
-    return catalog is not None and catalog.ready()
+    if catalog is None:
+        return False
+    try:
+        return catalog.ready()
+    except sqlite3.Error:
+        return False
+
+
+def _with_catalog(catalog, query, fallback):
+    """Serve from the mirror when ready; on a read-time DB error fall back.
+
+    The spec (§9) requires any DB error to degrade to the portal rather than
+    surface as a 500.
+    """
+    if _catalog_ready(catalog):
+        try:
+            return query(catalog)
+        except sqlite3.Error:
+            pass
+    return fallback()
 
 
 def handle_api(path, params, method, body, portal, store, catalog=None):
     try:
         if path == "/api/routes" and method == "GET":
-            if _catalog_ready(catalog):
-                routes = catalog.all_routes(params.get("type"))
-            else:
+            rtype = params.get("type")
+
+            def _portal_routes():
                 routes = portal.get_routes()
-                rtype = params.get("type")
                 if rtype is not None:
                     routes = [r for r in routes if str(r.get("routeTypeId")) == str(rtype)]
+                return routes
+
+            routes = _with_catalog(catalog, lambda c: c.all_routes(rtype), _portal_routes)
             return 200, {"routes": routes}
 
         if path == "/api/route" and method == "GET":
             rid = _as_int(params.get("id"))
             if rid is None:
                 return 400, {"error": {"reason": "bad_param", "message": "id required"}}
-            route = catalog.get_route(rid) if _catalog_ready(catalog) else portal.get_route(rid)
+            route = _with_catalog(catalog, lambda c: c.get_route(rid),
+                                  lambda: portal.get_route(rid))
             return 200, {"route": route}
 
         if path == "/api/stations" and method == "GET":
             q = (params.get("q") or "").strip()
-            if _catalog_ready(catalog):
-                stations = catalog.search_stations(q)
-            else:
+
+            def _portal_stations():
                 stations = portal.get_stations()
                 if q:
                     stations = [s for s in stations if q.lower() in (s.get("name") or "").lower()]
+                return stations
+
+            stations = _with_catalog(catalog, lambda c: c.search_stations(q), _portal_stations)
             return 200, {"stations": stations}
 
         if path == "/api/stops" and method == "GET":
             q = (params.get("q") or "").strip()
-            if _catalog_ready(catalog):
-                stops = catalog.stops_with_routes(q)
-            else:
+
+            def _portal_stops():
                 stops = portal.get_stations()
                 if q:
                     stops = [s for s in stops if q.lower() in (s.get("name") or "").lower()]
-                stops = [dict(s, routes=[]) for s in stops]
+                return [dict(s, routes=[]) for s in stops]
+
+            stops = _with_catalog(catalog, lambda c: c.stops_with_routes(q), _portal_stops)
             return 200, {"stops": stops}
 
         if path == "/api/forecast" and method == "GET":
@@ -177,8 +203,8 @@ def handle_api(path, params, method, body, portal, store, catalog=None):
             sid = _as_int(params.get("sid"))
             if sid is None:
                 return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
-            routes = catalog.routes_for_stop(sid) if _catalog_ready(catalog) \
-                else portal.get_station_routes(sid)
+            routes = _with_catalog(catalog, lambda c: c.routes_for_stop(sid),
+                                   lambda: portal.get_station_routes(sid))
             return 200, {"routes": routes}
 
         if path == "/api/vehicle" and method == "GET":
@@ -323,15 +349,24 @@ def make_handler(portal, store, static_dir, catalog=None):
     return Handler
 
 
+def _watchdog_sleep(interval):
+    """Re-check the mirror at most every 300s, so a failed build retries soon."""
+    return interval if 0 < interval < 300 else 300
+
+
 def _catalog_watchdog(cat, portal, interval):
     """Daemon loop: rebuild the mirror on first run and then every interval."""
+    try:
+        interval = int(interval)
+    except (TypeError, ValueError):
+        interval = 0
     while True:
         try:
             if cat.should_refresh(time.time(), interval):
                 cat.refresh_async(portal)
         except Exception:  # noqa: BLE001 - the watchdog must never die
             pass
-        time.sleep(interval if interval and interval > 0 else 300)
+        time.sleep(_watchdog_sleep(interval))
 
 
 def serve(config, portal=None, store=None, static_dir="static", catalog=None):
@@ -339,11 +374,15 @@ def serve(config, portal=None, store=None, static_dir="static", catalog=None):
     store = store or FavoritesStore(os.path.join(os.path.dirname(__file__), "favorites.json"))
     cat_cfg = config.get("catalog") or {}
     if catalog is None and cat_cfg.get("enabled", False):
-        catalog = catalog.Catalog(os.path.join(os.path.dirname(__file__),
-                                               cat_cfg.get("path", "catalog.db")))
-        interval = cat_cfg.get("refreshSeconds", 86400)
-        threading.Thread(target=_catalog_watchdog,
-                         args=(catalog, portal, interval), daemon=True).start()
+        try:
+            catalog = catalog_module.Catalog(
+                os.path.join(os.path.dirname(__file__), cat_cfg.get("path", "catalog.db")))
+        except (sqlite3.Error, OSError):
+            catalog = None
+        if catalog is not None:
+            threading.Thread(target=_catalog_watchdog,
+                             args=(catalog, portal, cat_cfg.get("refreshSeconds", 86400)),
+                             daemon=True).start()
     handler = make_handler(portal, store, os.path.abspath(static_dir), catalog)
     return http.server.ThreadingHTTPServer((config["host"], config["port"]), handler)
 

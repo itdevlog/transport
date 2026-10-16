@@ -536,3 +536,63 @@ class CatalogWiringTest(unittest.TestCase):
         finally:
             httpd.shutdown()
             httpd.server_close()
+
+
+class CatalogConfiguredStartupTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.dir.name, "index.html"), "w") as fh:
+            fh.write("<h1>ok</h1>")
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def _serve_enabled(self, db_path):
+        cfg = dict(CONFIG_HTTP, host="127.0.0.1", port=0, catalog={
+            "enabled": True, "path": db_path, "refreshSeconds": 86400})
+        return server.serve(cfg, portal=FakePortal(),
+                            store=server.FavoritesStore(os.path.join(self.dir.name, "f.json")),
+                            static_dir=self.dir.name)
+
+    def _get(self, httpd, path):
+        threading.Thread(target=httpd.serve_forever, daemon=True).start()
+        try:
+            port = httpd.server_address[1]
+            with urllib.request.urlopen(f"http://127.0.0.1:{port}{path}", timeout=5) as r:
+                return r.status, json.loads(r.read())
+        finally:
+            httpd.shutdown()
+            httpd.server_close()
+
+    def test_serve_builds_catalog_when_enabled(self):
+        httpd = self._serve_enabled(os.path.join(self.dir.name, "catalog.db"))
+        status, body = self._get(httpd, "/api/catalog")
+        self.assertEqual(status, 200)
+        self.assertTrue(body["enabled"])
+
+    def test_serve_survives_corrupt_db_and_uses_portal(self):
+        path = os.path.join(self.dir.name, "catalog.db")
+        with open(path, "wb") as fh:
+            fh.write(b"not a database")
+        httpd = self._serve_enabled(path)
+        status, body = self._get(httpd, "/api/stations")
+        self.assertEqual(status, 200)
+        self.assertTrue(any(s["name"] == "Академия тенниса" for s in body["stations"]))
+
+    def test_reference_endpoints_fall_back_on_db_error(self):
+        path = os.path.join(self.dir.name, "catalog.db")
+        c = catalog.Catalog(path)
+        c.rebuild_from([{"id": 1, "name": "A"}],
+                       [{"id": 9, "number": "9", "routeTypeId": 1}],
+                       {9: {"subroutes": [{"stations": [{"id": 1}]}]}})
+        with open(path, "wb") as fh:
+            fh.write(b"corrupted")
+        store = server.FavoritesStore(os.path.join(self.dir.name, "f.json"))
+        status, body = server.handle_api("/api/routes", {}, "GET", None, FakePortal(), store, c)
+        self.assertEqual(status, 200)
+        self.assertEqual([r["number"] for r in body["routes"]], ["87", "7"])
+
+    def test_watchdog_sleep_caps_retry_interval(self):
+        self.assertEqual(server._watchdog_sleep(86400), 300)
+        self.assertEqual(server._watchdog_sleep(60), 60)
+        self.assertEqual(server._watchdog_sleep(0), 300)
