@@ -1,0 +1,247 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>Демо: варианты отображения остановок</title>
+<style>
+  :root{
+    --accent:#c8102e; --ink:#1c2530; --muted:#6b7785; --line:#e2e6ea;
+    --bg:#f4f6f8; --card:#ffffff;
+    --bus:#2f9e44; --trolley:#1565c0; --tram:#c8102e; --other:#6b7785;
+  }
+  *{box-sizing:border-box}
+  body{margin:0;font:16px/1.45 system-ui,-apple-system,"Segoe UI",Roboto,sans-serif;background:var(--bg);color:var(--ink)}
+  .topbar{background:var(--accent);color:#fff;padding:16px 20px}
+  .topbar h1{margin:0;font-size:1.15rem}
+  .topbar p{margin:4px 0 0;font-size:.85rem;opacity:.9}
+  .wrap{max-width:760px;margin:0 auto;padding:16px}
+  .tabs{display:flex;flex-wrap:wrap;gap:6px;padding:12px 16px 0;max-width:760px;margin:0 auto}
+  .tabs button{border:1px solid var(--line);background:#fff;color:var(--ink);border-radius:999px;padding:7px 13px;font-size:.85rem;cursor:pointer}
+  .tabs button.active{background:var(--ink);color:#fff;border-color:var(--ink)}
+  .note{background:#fff7e6;border:1px solid #ffe0a3;color:#7a5b00;border-radius:10px;padding:9px 12px;font-size:.82rem;margin:12px 0}
+  .search{width:100%;padding:11px 13px;border:1px solid var(--line);border-radius:10px;background:#fff;font-size:1rem;margin-bottom:12px}
+  .card{background:var(--card);border:1px solid var(--line);border-radius:12px;margin-bottom:8px}
+  .row{display:flex;align-items:center;gap:10px;padding:12px 14px}
+  .main{flex:1;min-width:0}
+  .name{font-weight:600}
+  .meta{color:var(--muted);font-size:.82rem;margin-top:2px}
+  .star{border:none;background:none;font-size:1.2rem;color:#c2c9d1;cursor:pointer;padding:4px}
+  .star.on{color:#f5a623}
+  .num{display:inline-flex;align-items:center;justify-content:center;min-width:38px;height:28px;padding:0 7px;border-radius:8px;color:#fff;font-weight:700;font-size:.85rem}
+  .num.type-1{background:var(--bus)} .num.type-2{background:var(--trolley)} .num.type-4{background:var(--tram)} .num.type-other{background:var(--other)}
+  .dots{display:inline-flex;gap:3px;vertical-align:middle;margin-left:6px}
+  .dot{width:9px;height:9px;border-radius:50%;display:inline-block}
+  .dot.type-1{background:var(--bus)} .dot.type-2{background:var(--trolley)} .dot.type-4{background:var(--tram)} .dot.type-other{background:var(--other)}
+  .chips{display:flex;flex-wrap:wrap;gap:5px;margin-top:6px}
+  .chip{font-size:.75rem;font-weight:700;color:#fff;border-radius:6px;padding:2px 7px}
+  .chip.type-1{background:var(--bus)} .chip.type-2{background:var(--trolley)} .chip.type-4{background:var(--tram)} .chip.type-other{background:var(--other)}
+  .group-head{display:flex;align-items:center;gap:10px;padding:12px 14px;cursor:pointer}
+  .chev{color:var(--muted);transition:transform .15s}
+  .group.open .chev{transform:rotate(90deg)}
+  .platforms{padding:0 14px 10px}
+  .platform{border-top:1px dashed var(--line);padding:10px 0}
+  .platform .pname{font-size:.85rem;color:var(--muted);margin-bottom:6px}
+  .hidden{display:none}
+  .dirlist{background:#fff;border:1px solid var(--line);border-radius:12px;overflow:hidden}
+  .dirlist .item{display:flex;align-items:center;gap:12px;padding:11px 14px;border-bottom:1px solid var(--line)}
+  .dirlist .item:last-child{border-bottom:none}
+  .ord{width:26px;height:26px;border-radius:50%;background:#eef1f4;color:var(--muted);display:flex;align-items:center;justify-content:center;font-size:.8rem;font-weight:700}
+  .bigcard{background:#fff;border:1px solid var(--line);border-radius:14px;padding:14px;margin-bottom:12px}
+  .bigcard h3{margin:0 0 4px;font-size:1.05rem}
+  .btnrow{display:flex;gap:8px;margin-top:10px}
+  .btn{border:1px solid var(--line);background:#fff;border-radius:9px;padding:7px 12px;font-size:.85rem;cursor:pointer}
+  .btn.pri{background:var(--accent);color:#fff;border-color:var(--accent)}
+  .legend{display:flex;gap:14px;flex-wrap:wrap;font-size:.8rem;color:var(--muted);margin:6px 0 12px}
+  .legend span{display:inline-flex;align-items:center;gap:5px}
+</style>
+</head>
+<body>
+<header class="topbar">
+  <h1>Варианты отображения остановок</h1>
+  <p>Демо-страница для сравнения. Данные — реальные названия/маршруты «Площади 1905 года», но макет статический.</p>
+</header>
+
+<nav class="tabs" id="tabs"></nav>
+
+<div class="wrap">
+  <div class="note" id="note"></div>
+  <input class="search" id="q" placeholder="Поиск остановки по названию…" autocomplete="off">
+  <main id="view"></main>
+</div>
+
+<script>
+const TYPES = {
+  1:{name:"Автобус",  cls:"type-1"},
+  2:{name:"Троллейбус",cls:"type-2"},
+  4:{name:"Трамвай",  cls:"type-4"},
+};
+const typeCls = t => (TYPES[t] ? "type-"+t : "type-other");
+
+// моковые данные (на основе реальной остановки 513 «Площадь 1905 года» и соседних платформ)
+const STOPS = [
+  {id:513,   name:"Площадь 1905 года", dir:71,   routes:[["43",1],["45",1],["46",1],["48",1],["49",1],["51",1],["52",1],["59",1],["62",1],["84",1],["87",1],["93",1],["2",4],["6",4],["12",4],["13",4],["15",4],["16",4],["18",4]]},
+  {id:512,   name:"Площадь 1905 года", dir:-100, routes:[["2",4],["6",4],["13",4],["16",4],["43",1],["48",1],["59",1]]},
+  {id:10513, name:"Площадь 1905 года", dir:80,   routes:[["12",4],["15",4],["18",4],["45",1],["59",1],["84",1]]},
+  {id:10511, name:"Площадь 1905 года", dir:-106, routes:[["2",4],["6",4],["49",1],["51",1],["62",1],["87",1],["93",1]]},
+  {id:508,   name:"Метро «Площадь 1905 года»", dir:-10,  routes:[["43",1],["45",1],["48",1],["59",1],["84",1]]},
+  {id:509,   name:"Метро «Площадь 1905 года»", dir:-190, routes:[["46",1],["49",1],["51",1],["62",1],["87",1]]},
+  {id:5130,  name:"Метро «Площадь 1905 года»", dir:-12,  routes:[["2",4],["6",4],["13",4],["16",4]]},
+  {id:5830,  name:"Академия тенниса", dir:-29, routes:[["87",1]]},
+  {id:5831,  name:"Академика Ландау", dir:12,  routes:[["46",1],["51",1],["52",1],["62",1],["87",1],["93",1]]},
+];
+
+// для варианта «от маршрута»
+const ROUTE_87 = ["Академика Ландау","Академика Сахарова","Институт связи","Академия тенниса","Медгородок","ЦПКиО","УрФУ","Цирк","Площадь 1905 года","Горбольница № 7"];
+
+const VARIANTS = [
+  {key:"cur", label:"Текущий",      note:"Как сейчас: сплошной список из одних названий. Ни вида транспорта, ни маршрутов, ни различия между одинаковыми названиями."},
+  {key:"A",   label:"A: обогащение",note:"Строка = название + цветные точки вида транспорта + чипы номеров маршрутов. Сразу видно, что здесь ходит."},
+  {key:"B",   label:"B: группировка",note:"Одинаковые названия свёрнуты в один узел «N платформ». Раскрыл → видишь каждую платформу и её маршруты."},
+  {key:"C",   label:"C: от маршрута",note:"Вход со стороны маршрута: вводишь номер — видишь остановки по порядку следования. Там, где направления понятны."},
+  {key:"AB",  label:"A + B (реком.)",note:"Рекомендуемый набор: обогащённые строки + группировка платформ. Закрывает обе проблемы."},
+];
+
+let active = "cur";
+let query = "";
+
+const $ = s => document.querySelector(s);
+const view = $("#view"), tabs = $("#tabs");
+const esc = s => String(s).replace(/[&<>"]/g, c => ({"&":"&amp;","<":"&lt;",">":"&gt;","\"":"&quot;"}[c]));
+
+function dots(types){
+  return '<span class="dots">' + types.map(t=>'<span class="dot '+typeCls(t)+'"></span>').join("") + '</span>';
+}
+function chips(routes){
+  return '<div class="chips">' + routes.map(([n,t])=>'<span class="chip '+typeCls(t)+'">'+esc(n)+'</span>').join("") + '</div>';
+}
+function typesOf(routes){ return [...new Set(routes.map(r=>r[1]))]; }
+function star(){ return '<button class="star" title="в избранное">★</button>'; }
+
+function filtered(){
+  const q = query.trim().toLowerCase();
+  return q ? STOPS.filter(s=>s.name.toLowerCase().includes(q)) : STOPS;
+}
+
+// --- варианты ---
+function renderCurrent(list){
+  if(!list.length) return empty();
+  return list.map(s=>`
+    <div class="card"><div class="row">
+      <div class="main"><div class="name">${esc(s.name)}</div></div>
+      ${star()}
+    </div></div>`).join("");
+}
+
+function renderA(list){
+  if(!list.length) return empty();
+  return list.map(s=>`
+    <div class="card"><div class="row">
+      <div class="main">
+        <div class="name">${esc(s.name)}${dots(typesOf(s.routes))}</div>
+        ${chips(s.routes)}
+      </div>
+      ${star()}
+    </div></div>`).join("");
+}
+
+function groupBy(list, keyFn){
+  const m = new Map();
+  list.forEach(s=>{ const k=keyFn(s); (m.get(k)||m.set(k,[]).get(k)).push(s); });
+  return m;
+}
+function renderB(list){
+  if(!list.length) return empty();
+  const groups = groupBy(list, s=>s.name);
+  return [...groups.entries()].map(([name, arr], i)=>{
+    if(arr.length===1){
+      const s=arr[0];
+      return `<div class="card"><div class="row">
+        <div class="main"><div class="name">${esc(s.name)}${dots(typesOf(s.routes))}</div>${chips(s.routes)}</div>
+        ${star()}</div></div>`;
+    }
+    const allRoutes=[]; arr.forEach(s=>allRoutes.push(...s.routes));
+    const plat = arr.map((s,pi)=>`
+      <div class="platform">
+        <div class="pname">платформа ${pi+1} · сторона ${s.dir}°</div>
+        ${chips(s.routes)}
+      </div>`).join("");
+    return `<div class="card group" data-i="${i}">
+      <div class="group-head" data-toggle="${i}">
+        <span class="chev">▸</span>
+        <div class="main"><div class="name">${esc(name)}${dots(typesOf(allRoutes))}</div>
+          <div class="meta">${arr.length} платформы</div></div>
+        ${star()}
+      </div>
+      <div class="platforms hidden">${plat}</div>
+    </div>`;
+  }).join("");
+}
+
+function renderC(){
+  const q=query.trim();
+  if(!q) return `<div class="card"><div class="row"><div class="main meta">Введите номер маршрута, напр. «87».</div></div></div>`;
+  return `
+    <div class="card"><div class="row"><div class="main">
+      <div class="name">Маршрут ${esc(q)} <span class="meta">· Академика Ландау – Горбольница № 7</span></div>
+      <div class="meta">Автобус · остановки по направлению</div>
+    </div></div></div>
+    <div class="dirlist">${ROUTE_87.map((n,i)=>`
+      <div class="item"><span class="ord">${i+1}</span><div class="main"><div class="name">${esc(n)}</div></div>${star()}</div>`).join("")}
+    </div>`;
+}
+
+function renderD(list){
+  if(!list.length) return empty();
+  return list.map(s=>`
+    <div class="bigcard">
+      <h3>${esc(s.name)}${dots(typesOf(s.routes))}</h3>
+      <div class="meta">${s.routes.length} маршрутов</div>
+      ${chips(s.routes)}
+      <div class="btnrow"><button class="btn pri">Показать прибытия</button><button class="btn">В избранное</button></div>
+    </div>`).join("");
+}
+
+function renderAB(list){
+  return renderB(list); // B уже включает обогащение (точки+чипы), т.е. A+B
+}
+function empty(){ return `<div class="card"><div class="row"><div class="main meta">Ничего не найдено.</div></div></div>`; }
+
+function render(){
+  const list = filtered();
+  let html="", note="";
+  if(active==="cur") html=renderCurrent(list);
+  else if(active==="A") html=renderA(list);
+  else if(active==="B") html=renderB(list);
+  else if(active==="C") html=renderC();
+  else if(active==="D") html=renderD(list);
+  else if(active==="AB") html=renderAB(list);
+  const v = VARIANTS.find(v=>v.key===active);
+  $("#note").textContent = v ? v.note : "";
+  view.innerHTML = html;
+
+  // раскрытие групп (вариант B)
+  view.querySelectorAll("[data-toggle]").forEach(h=>{
+    h.addEventListener("click",()=>{
+      const card=h.closest(".group");
+      card.classList.toggle("open");
+      card.querySelector(".platforms").classList.toggle("hidden");
+    });
+  });
+  view.querySelectorAll(".star").forEach(b=>b.addEventListener("click",e=>{e.stopPropagation();b.classList.toggle("on");}));
+  $("#q").style.visibility = active==="C" ? "visible" : "visible";
+  $("#q").placeholder = active==="C" ? "Номер маршрута (напр. 87)…" : "Поиск остановки по названию…";
+}
+
+function drawTabs(){
+  tabs.innerHTML = VARIANTS.map(v=>`<button data-key="${v.key}" class="${v.key===active?"active":""}">${esc(v.label)}</button>`).join("");
+  tabs.querySelectorAll("button").forEach(b=>b.addEventListener("click",()=>{ active=b.dataset.key; drawTabs(); render(); }));
+}
+
+$("#q").addEventListener("input", e=>{ query=e.target.value; render(); });
+
+drawTabs();
+render();
+</script>
+</body>
+</html>
