@@ -4,6 +4,8 @@ const FORECAST_REFRESH_MS = 20000;
 
 // Таблица видов транспорта живёт в vehicle-types.js (одна точка правды).
 const { routeTypeName, routeTypeClass, typeOptions } = VehicleTypes;
+// Группировка остановок в «платформы» — в stops-group.js.
+const { groupStops } = StopsGroup;
 
 let favorites = { routes: [], stops: [] };
 let refreshTimer = null;
@@ -676,6 +678,81 @@ async function renderRoute(view, id) {
   drawTabs();
 }
 
+/* ---------- поиск остановок (вариант A: обогащение, вариант B: платформы) ---------- */
+
+function platformWord(n) {
+  const mod10 = n % 10;
+  const mod100 = n % 100;
+  if (mod10 === 1 && mod100 !== 11) return "платформа";
+  if (mod10 >= 2 && mod10 <= 4 && (mod100 < 10 || mod100 >= 20)) return "платформы";
+  return "платформ";
+}
+
+function routeChips(routes) {
+  const box = el("div", { class: "route-chips" });
+  (routes || []).forEach((r) => {
+    box.appendChild(el("span", {
+      class: "chip " + routeTypeClass(r.routeTypeId),
+      title: routeTypeName(r.routeTypeId) + " " + (r.name || r.number || ""),
+    }, [String(r.number || r.shortName || "?")]));
+  });
+  return box;
+}
+
+// Строка остановки с обогащением: название + точки видов + чипы маршрутов.
+function stopResultRow(st) {
+  const row = el("div", { class: "row stop-result" });
+  const main = el("div", { class: "main" });
+  const link = el("a", { class: "link", href: "#/stop/" + encodeURIComponent(st.id) });
+  const nameLine = el("div", { class: "name" }, [st.name || ("Остановка " + st.id)]);
+  const dots = el("span", { class: "type-dots" });
+  fillTypeDots(dots, typeIdsFromRoutes(st.routes));
+  nameLine.appendChild(document.createTextNode(" "));
+  nameLine.appendChild(dots);
+  link.appendChild(nameLine);
+  if (st.routes && st.routes.length) link.appendChild(routeChips(st.routes));
+  main.appendChild(link);
+  row.appendChild(main);
+  row.appendChild(starButton("stop", st.id, st.name));
+  return row;
+}
+
+// Группа «платформ»: одна строка-заголовок, по клику разворачивается.
+function renderStopGroup(group) {
+  if (group.platforms.length === 1) return stopResultRow(group.platforms[0]);
+  const wrap = el("div", { class: "stop-group" });
+  const row = el("div", { class: "row stop-group-head", role: "button", tabindex: "0", "aria-expanded": "false" });
+  const main = el("div", { class: "main" });
+  const nameLine = el("div", { class: "name" }, [group.name || "Без названия"]);
+  nameLine.appendChild(document.createTextNode(" "));
+  nameLine.appendChild(el("span", { class: "badge" },
+    [group.platforms.length + " " + platformWord(group.platforms.length)]));
+  main.appendChild(nameLine);
+  row.appendChild(main);
+  const chevron = el("span", { class: "chevron" }, ["▸"]);
+  row.appendChild(chevron);
+  const body = el("div", { class: "stop-group-body hidden" });
+  group.platforms.forEach((p) => body.appendChild(stopResultRow(p)));
+  let open = false;
+  function toggle() {
+    open = !open;
+    body.classList.toggle("hidden", !open);
+    row.classList.toggle("open", open);
+    row.setAttribute("aria-expanded", open ? "true" : "false");
+    chevron.textContent = open ? "▾" : "▸";
+  }
+  row.addEventListener("click", toggle);
+  row.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+  wrap.appendChild(row);
+  wrap.appendChild(body);
+  return wrap;
+}
+
 async function renderStops(view) {
   view.appendChild(el("h2", {}, ["Поиск остановок"]));
   const controls = el("div", { class: "controls" });
@@ -690,12 +767,13 @@ async function renderStops(view) {
     const query = search.value.trim();
     listBox.innerHTML = "";
     try {
-      const stations = (await api("/api/stations?q=" + encodeURIComponent(query))).stations || [];
-      if (!stations.length) {
+      const stops = (await api("/api/stops?q=" + encodeURIComponent(query))).stops || [];
+      const groups = groupStops(stops);
+      if (!groups.length) {
         listBox.appendChild(el("div", { class: "empty" }, ["Ничего не найдено."]));
         return;
       }
-      stations.slice(0, 100).forEach((st) => listBox.appendChild(stationRow(st)));
+      groups.slice(0, 100).forEach((group) => listBox.appendChild(renderStopGroup(group)));
     } catch (err) {
       showBanner("Поиск не удался: " + err.message, "error");
     }

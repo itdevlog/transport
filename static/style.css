@@ -300,6 +300,36 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .vehicle-card__stop-name { color: var(--ink); }
 .vehicle-card .eta { color: var(--muted); font-weight: 600; white-space: nowrap; }
 
+/* Поиск остановок: обогащение (чипы) и группировка платформ */
+.stop-result .route-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.route-chips .chip {
+  display: inline-block;
+  padding: 0 7px;
+  border-radius: 8px;
+  border: 1px solid var(--line);
+  font-size: .78rem;
+  font-weight: 600;
+  line-height: 1.5;
+  color: var(--muted);
+}
+.chip.type-1 { border-color: #2f9e44; color: #2f9e44; }
+.chip.type-2 { border-color: #1565c0; color: #1565c0; }
+.chip.type-4 { border-color: #c8102e; color: #c8102e; }
+.stop-group { margin-bottom: 6px; }
+.stop-group-head { cursor: pointer; }
+.stop-group-head .badge {
+  display: inline-block;
+  padding: 0 8px;
+  border-radius: 10px;
+  background: var(--line);
+  color: var(--muted);
+  font-size: .72rem;
+  font-weight: 600;
+  vertical-align: middle;
+}
+.stop-group-head.open { border-color: var(--accent); }
+.stop-group-body { padding-left: 8px; border-left: 2px solid var(--line); }
+
 @media (min-width: 720px) {
   #view { padding: 22px; }
 }

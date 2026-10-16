@@ -2,6 +2,7 @@ import json
 import os
 import tempfile
 import threading
+import time
 import unittest
 import unittest.mock
 import urllib.error
@@ -466,8 +467,14 @@ class CatalogIntegrationTest(unittest.TestCase):
         self.dir = tempfile.TemporaryDirectory()
         self.store = server.FavoritesStore(os.path.join(self.dir.name, "favorites.json"))
         self.portal = FakePortal()
+        self._catalogs = []
 
     def tearDown(self):
+        # /api/refresh запускает фоновую пересборку в daemon-потоке; дождаться её,
+        # иначе поток создаёт файлы SQLite, пока TemporaryDirectory их удаляет.
+        deadline = time.time() + 5
+        while time.time() < deadline and any(c.is_building() for c in self._catalogs):
+            time.sleep(0.02)
         self.dir.cleanup()
 
     def _catalog(self):
@@ -477,6 +484,7 @@ class CatalogIntegrationTest(unittest.TestCase):
             [{"id": 1554, "number": "87", "name": "n", "shortName": "А-87", "routeTypeId": 1}],
             {1554: {"subroutes": [{"stations": [{"id": 5830}]}]}},
         )
+        self._catalogs.append(c)
         return c
 
     def call(self, path, params=None, method="GET", body=None, catalog=None):
