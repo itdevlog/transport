@@ -72,5 +72,35 @@ class ServiceWorkerTest(unittest.TestCase):
         self.assertIn("register", js)
 
 
+class ApplePwaTest(unittest.TestCase):
+    def test_apple_touch_icon_is_png(self):
+        path = os.path.join(STATIC, "apple-touch-icon.png")
+        self.assertTrue(os.path.isfile(path), "apple-touch-icon.png missing")
+        with open(path, "rb") as fh:
+            self.assertEqual(fh.read(8), b"\x89PNG\r\n\x1a\n")
+
+    def test_png_icons_have_expected_sizes(self):
+        import struct
+
+        for name, size in (("icon-192.png", 192), ("icon-512.png", 512)):
+            with open(os.path.join(STATIC, name), "rb") as fh:
+                head = fh.read(24)
+            width, height = struct.unpack(">II", head[16:24])
+            self.assertEqual((width, height), (size, size))
+
+    def test_index_has_apple_meta_and_png_icon(self):
+        html = _read("index.html")
+        self.assertIn("apple-mobile-web-app-capable", html)
+        self.assertIn("apple-mobile-web-app-title", html)
+        self.assertIn("apple-touch-icon.png", html)
+
+    def test_manifest_includes_png_icons(self):
+        with open(os.path.join(STATIC, "manifest.webmanifest"), encoding="utf-8") as fh:
+            m = json.load(fh)
+        pngs = {i["sizes"] for i in m["icons"] if i["type"] == "image/png"}
+        self.assertIn("192x192", pngs)
+        self.assertIn("512x512", pngs)
+
+
 if __name__ == "__main__":
     unittest.main()
