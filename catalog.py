@@ -210,3 +210,18 @@ class Catalog:
         finally:
             conn.close()
         return {"stops": len(stops or []), "routes": len(routes or [])}
+
+    def rebuild(self, portal):
+        stops = portal.get_stations() or []
+        routes = portal.get_routes() or []
+        details = {}
+        for r in routes:
+            if not isinstance(r, dict):
+                continue
+            rid = r.get("id")
+            if rid is None:
+                continue
+            details[rid] = portal.get_route(rid)
+        result = self.rebuild_from(stops, routes, details)
+        self._last_error = None
+        return result

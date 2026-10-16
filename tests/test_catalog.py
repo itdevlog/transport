@@ -72,3 +72,37 @@ class CatalogRebuildFromTest(unittest.TestCase):
         result = self.c.rebuild_from(self.stops, self.routes,
                                      {1554: {"subroutes": [{"stations": None}, "junk"]}})
         self.assertEqual(result, {"stops": 2, "routes": 1})  # builds without raising
+
+
+class _FakePortal:
+    def __init__(self):
+        self.calls = []
+        self.stations = [{"id": 1, "name": "A"}, {"id": 2, "name": "B"}]
+        self.routes = [{"id": 10, "number": "1", "routeTypeId": 1}]
+        self.detail = {10: {"subroutes": [{"stations": [{"id": 1}, {"id": 2}]}]}}
+
+    def get_stations(self):
+        return self.stations
+
+    def get_routes(self):
+        return self.routes
+
+    def get_route(self, rid):
+        self.calls.append(rid)
+        return self.detail.get(rid, {})
+
+
+class CatalogRebuildTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.c = catalog.Catalog(os.path.join(self.dir.name, "catalog.db"))
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_rebuild_fetches_all_details_once(self):
+        p = _FakePortal()
+        result = self.c.rebuild(p)
+        self.assertEqual(result, {"stops": 2, "routes": 1})
+        self.assertEqual(p.calls, [10])
+        self.assertEqual(self.c.counts(), {"stops": 2, "routes": 1})
