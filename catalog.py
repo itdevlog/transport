@@ -226,6 +226,33 @@ class Catalog:
         self._last_error = None
         return result
 
+    def is_building(self):
+        return self._building
+
+    def should_refresh(self, now, interval):
+        last = self.status()["lastRefresh"]
+        if last is None:
+            return True
+        return (now - last) >= interval
+
+    def refresh_async(self, portal, now=None):
+        with self._lock:
+            if self._building:
+                return "building"
+            self._building = True
+
+        def run():
+            try:
+                self.rebuild(portal)
+            except Exception as exc:
+                self._last_error = str(exc)
+            finally:
+                with self._lock:
+                    self._building = False
+
+        threading.Thread(target=run, daemon=True).start()
+        return "started"
+
     @staticmethod
     def _route_row(row):
         return {

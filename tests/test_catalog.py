@@ -146,3 +146,41 @@ class CatalogQueriesTest(unittest.TestCase):
         stops = {s["id"]: s for s in self.c.stops_with_routes("академия")}
         self.assertEqual(list(stops), [5830])
         self.assertEqual(stops[5830]["routes"][0]["routeTypeId"], 1)
+
+
+class CatalogRefreshTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.c = catalog.Catalog(os.path.join(self.dir.name, "catalog.db"))
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def test_should_refresh_when_never_refreshed(self):
+        self.assertTrue(self.c.should_refresh(1000, 86400))
+
+    def test_should_refresh_respects_interval(self):
+        self.c.rebuild_from([{"id": 1, "name": "A"}], [], {})
+        self.assertFalse(self.c.should_refresh(self.c.status()["lastRefresh"] + 1, 86400))
+
+    def test_refresh_async_records_error_and_keeps_old_data(self):
+        self.c.rebuild_from([{"id": 1, "name": "A"}], [{"id": 9, "number": "9"}], {})
+        self.c.refresh_async(_BadPortal())  # raises inside the thread
+        import time
+        for _ in range(50):
+            if not self.c.is_building():
+                break
+            time.sleep(0.02)
+        self.assertEqual(self.c.counts()["stops"], 1)  # old data intact
+        self.assertIsNotNone(self.c.status()["lastError"])
+
+
+class _BadPortal:
+    def get_stations(self):
+        raise RuntimeError("boom")
+
+    def get_routes(self):
+        raise RuntimeError("boom")
+
+    def get_route(self, rid):
+        raise RuntimeError("boom")
