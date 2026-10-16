@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import tempfile
 import threading
 import time
@@ -9,6 +10,7 @@ import urllib.error
 import urllib.request
 
 import catalog
+import profiles
 import server
 
 CONFIG_HTTP = {
@@ -414,6 +416,76 @@ class HttpServerTest(unittest.TestCase):
         with self.assertRaises(urllib.error.HTTPError) as ctx:
             self.get("/missing.css")
         self.assertEqual(ctx.exception.code, 404)
+
+
+class FavoritesCookieTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        with open(os.path.join(self.dir.name, "index.html"), "w", encoding="utf-8") as fh:
+            fh.write("<h1>ok</h1>")
+        self.store = server.FavoritesStore(os.path.join(self.dir.name, "fav.json"))
+        self.profiles = profiles.ProfilesStore(os.path.join(self.dir.name, "profiles.db"))
+        cfg = dict(CONFIG_HTTP, host="127.0.0.1", port=0)
+        self.httpd = server.serve(cfg, portal=FakePortal(), store=self.store,
+                                  static_dir=self.dir.name, profiles=self.profiles)
+        self.port = self.httpd.server_address[1]
+        self.thread = threading.Thread(target=self.httpd.serve_forever, daemon=True)
+        self.thread.start()
+
+    def tearDown(self):
+        self.httpd.shutdown()
+        self.httpd.server_close()
+        self.thread.join()
+        self.dir.cleanup()
+
+    def _request(self, method, url, cookie=None, payload=None):
+        data = json.dumps(payload).encode("utf-8") if payload is not None else None
+        headers = {}
+        if data is not None:
+            headers["Content-Type"] = "application/json"
+        if cookie is not None:
+            headers["Cookie"] = cookie
+        req = urllib.request.Request(f"http://127.0.0.1:{self.port}{url}", data=data,
+                                     headers=headers, method=method)
+        try:
+            with urllib.request.urlopen(req) as resp:
+                return resp.status, resp.read().decode("utf-8"), resp.headers.get("Set-Cookie")
+        except urllib.error.HTTPError as exc:
+            return exc.code, exc.read().decode("utf-8"), exc.headers.get("Set-Cookie")
+
+    def test_first_request_sets_cookie_and_empty_profile(self):
+        status, body, set_cookie = self._request("GET", "/api/favorites")
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"routes": [], "stops": []})
+        self.assertIsNotNone(set_cookie)
+        self.assertIn("marshrut_uid=", set_cookie)
+        self.assertIn("HttpOnly", set_cookie)
+        self.assertIn("SameSite=Lax", set_cookie)
+        self.assertIn("Max-Age=31536000", set_cookie)
+
+    def test_same_cookie_returns_same_profile(self):
+        _, _, set_cookie = self._request("GET", "/api/favorites")
+        c1 = set_cookie.split(";")[0]
+        status, _, _ = self._request(
+            "POST", "/api/favorites", cookie=c1,
+            payload={"action": "add", "kind": "stop", "id": 5830, "name": "A"})
+        self.assertEqual(status, 200)
+        status, body, _ = self._request("GET", "/api/favorites", cookie=c1)
+        self.assertEqual(status, 200)
+        self.assertEqual(len(json.loads(body)["stops"]), 1)
+        c2 = "marshrut_uid=" + "a" * 32
+        status, body, _ = self._request("GET", "/api/favorites", cookie=c2)
+        self.assertEqual(status, 200)
+        self.assertEqual(json.loads(body), {"routes": [], "stops": []})
+
+    def test_garbage_cookie_is_replaced(self):
+        status, _, set_cookie = self._request(
+            "GET", "/api/favorites", cookie="marshrut_uid=nothex")
+        self.assertEqual(status, 200)
+        self.assertIsNotNone(set_cookie)
+        self.assertIn("marshrut_uid=", set_cookie)
+        uid = set_cookie.split("marshrut_uid=")[1].split(";")[0]
+        self.assertRegex(uid, r"^[0-9a-f]{32}$")
 
 
 class LoadConfigTest(unittest.TestCase):

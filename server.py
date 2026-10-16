@@ -1,15 +1,19 @@
+import http.cookies
 import http.server
 import json
 import mimetypes
 import os
+import re
 import sqlite3
 import tempfile
 import threading
 import time
 import urllib.parse
+import uuid
 
 import catalog as catalog_module
 from portal import PortalClient, PortalError
+from profiles import ProfilesStore
 
 # .webmanifest должен отдаваться как application/manifest+json, иначе
 # браузер может отказаться устанавливать приложение.
@@ -104,6 +108,32 @@ class FavoritesStore:
                 os.remove(tmp)
 
 
+class _LegacyFavorites:
+    """Adapter giving the shared-file store the per-user interface.
+
+    Used only when no ProfilesStore is configured (tests, or a deployment
+    that has not switched to per-user profiles yet).
+    """
+
+    def __init__(self, store):
+        self._store = store
+
+    def get(self, uid):
+        return self._store.load()
+
+    def add(self, uid, kind, item):
+        return self._store.add(kind, item)
+
+    def remove(self, uid, kind, item_id):
+        return self._store.remove(kind, item_id)
+
+    def set_note(self, uid, kind, item_id, note):
+        return self._store.set_note(kind, item_id, note)
+
+    def set_dir_label(self, uid, kind, item_id, where, label):
+        return self._store.set_dir_label(kind, item_id, where, label)
+
+
 def _as_int(value):
     try:
         return int(value)
@@ -146,7 +176,34 @@ def _with_catalog(catalog, query, fallback):
     return fallback()
 
 
-def handle_api(path, params, method, body, portal, store, catalog=None):
+UID_RE = re.compile(r"[0-9a-f]{32}")
+
+
+def _valid_uid(value):
+    return bool(UID_RE.fullmatch(value or ""))
+
+
+def _new_uid():
+    return uuid.uuid4().hex
+
+
+def _uid_from_cookie(cookie_header):
+    if not cookie_header:
+        return None
+    try:
+        jar = http.cookies.SimpleCookie()
+        jar.load(cookie_header)
+    except http.cookies.CookieError:
+        return None
+    morsel = jar.get("marshrut_uid")
+    if morsel is None:
+        return None
+    value = morsel.value
+    return value if _valid_uid(value) else None
+
+
+def handle_api(path, params, method, body, portal, store, catalog=None,
+               profiles=None, uid=None):
     try:
         if path == "/api/routes" and method == "GET":
             rtype = params.get("type")
@@ -230,17 +287,17 @@ def handle_api(path, params, method, body, portal, store, catalog=None):
                 return 200, {"status": "disabled"}
             return 200, {"status": catalog.refresh_async(portal)}
 
-        if path == "/api/favorites" and method == "GET":
-            return 200, store.load()
-
-        if path == "/api/favorites" and method == "POST":
+        if path == "/api/favorites":
+            backend = profiles if profiles is not None else _LegacyFavorites(store)
+            if method == "GET":
+                return 200, backend.get(uid)
             body = body or {}
             action, kind = body.get("action"), body.get("kind")
             if kind not in KIND_KEYS or action not in ("add", "remove", "note", "dir"):
                 return 400, {"error": {"reason": "bad_param", "message": "action/kind"}}
             if action == "add":
                 name = body.get("name") or _resolve_name(portal, kind, body.get("id"))
-                return 200, store.add(kind, {"id": body.get("id"), "name": name})
+                return 200, backend.add(uid, kind, {"id": body.get("id"), "name": name})
             if action == "note":
                 if body.get("id") is None:
                     return 400, {"error": {"reason": "bad_param", "message": "id required"}}
@@ -249,7 +306,7 @@ def handle_api(path, params, method, body, portal, store, catalog=None):
                     note = ""
                 if not isinstance(note, str) or len(note.strip()) > MAX_NOTE_LEN:
                     return 400, {"error": {"reason": "bad_param", "message": "note too long"}}
-                return 200, store.set_note(kind, body.get("id"), note)
+                return 200, backend.set_note(uid, kind, body.get("id"), note)
             if action == "dir":
                 if body.get("id") is None:
                     return 400, {"error": {"reason": "bad_param", "message": "id required"}}
@@ -261,8 +318,8 @@ def handle_api(path, params, method, body, portal, store, catalog=None):
                     return 400, {"error": {"reason": "bad_param", "message": "where required"}}
                 if not isinstance(label, str) or len(label.strip()) > MAX_NOTE_LEN:
                     return 400, {"error": {"reason": "bad_param", "message": "label too long"}}
-                return 200, store.set_dir_label(kind, body.get("id"), where, label)
-            return 200, store.remove(kind, body.get("id"))
+                return 200, backend.set_dir_label(uid, kind, body.get("id"), where, label)
+            return 200, backend.remove(uid, kind, body.get("id"))
 
         return 404, {"error": {"reason": "not_found", "message": path}}
     except PortalError as exc:
@@ -300,22 +357,38 @@ def load_config(path="config.json"):
     return config
 
 
-def make_handler(portal, store, static_dir, catalog=None):
+def make_handler(portal, store, static_dir, catalog=None, profiles=None):
     class Handler(http.server.BaseHTTPRequestHandler):
-        def _send(self, status, payload):
+        def _send(self, status, payload, set_uid=None):
             body = json.dumps(payload, ensure_ascii=False).encode("utf-8")
             self.send_response(status)
             self.send_header("Content-Type", "application/json; charset=utf-8")
             self.send_header("Content-Length", str(len(body)))
+            if set_uid is not None:
+                cookie = ("marshrut_uid=%s; HttpOnly; SameSite=Lax; Path=/; "
+                          "Max-Age=31536000" % set_uid)
+                if self.headers.get("X-Forwarded-Proto") == "https":
+                    cookie += "; Secure"
+                self.send_header("Set-Cookie", cookie)
             self.end_headers()
             self.wfile.write(body)
+
+        def _uid(self):
+            """Return (uid, fresh) — mint and flag a new cookie when absent/bad."""
+            uid = _uid_from_cookie(self.headers.get("Cookie"))
+            if uid is None:
+                return _new_uid(), True
+            return uid, False
 
         def do_GET(self):
             parsed = urllib.parse.urlparse(self.path)
             if parsed.path.startswith("/api/"):
                 params = {k: v[-1] for k, v in
                           urllib.parse.parse_qs(parsed.query).items()}
-                self._send(*handle_api(parsed.path, params, "GET", None, portal, store, catalog))
+                uid, fresh = self._uid()
+                status, payload = handle_api(parsed.path, params, "GET", None,
+                                             portal, store, catalog, profiles, uid)
+                self._send(status, payload, set_uid=uid if fresh else None)
                 return
             self._serve_static(parsed.path)
 
@@ -345,7 +418,10 @@ def make_handler(portal, store, static_dir, catalog=None):
                 self._send(400, {"error": {"reason": "bad_json"}})
                 return
             parsed = urllib.parse.urlparse(self.path)
-            self._send(*handle_api(parsed.path, {}, "POST", body, portal, store, catalog))
+            uid, fresh = self._uid()
+            status, payload = handle_api(parsed.path, {}, "POST", body,
+                                         portal, store, catalog, profiles, uid)
+            self._send(status, payload, set_uid=uid if fresh else None)
 
         def log_message(self, *args):
             pass
@@ -373,7 +449,7 @@ def _catalog_watchdog(cat, portal, interval):
         time.sleep(_watchdog_sleep(interval))
 
 
-def serve(config, portal=None, store=None, static_dir="static", catalog=None):
+def serve(config, portal=None, store=None, static_dir="static", catalog=None, profiles=None):
     portal = portal or PortalClient(config)
     store = store or FavoritesStore(os.path.join(os.path.dirname(__file__), "favorites.json"))
     cat_cfg = config.get("catalog") or {}
@@ -387,7 +463,7 @@ def serve(config, portal=None, store=None, static_dir="static", catalog=None):
             threading.Thread(target=_catalog_watchdog,
                              args=(catalog, portal, cat_cfg.get("refreshSeconds", 86400)),
                              daemon=True).start()
-    handler = make_handler(portal, store, os.path.abspath(static_dir), catalog)
+    handler = make_handler(portal, store, os.path.abspath(static_dir), catalog, profiles)
     return http.server.ThreadingHTTPServer((config["host"], config["port"]), handler)
 
 
