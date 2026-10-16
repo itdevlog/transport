@@ -11,6 +11,10 @@ import urllib.parse
 import catalog as catalog_module
 from portal import PortalClient, PortalError
 
+# .webmanifest должен отдаваться как application/manifest+json, иначе
+# браузер может отказаться устанавливать приложение.
+mimetypes.add_type("application/manifest+json", ".webmanifest")
+
 
 KIND_KEYS = {"route": "routes", "stop": "stops"}
 MAX_NOTE_LEN = 60

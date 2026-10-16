@@ -852,4 +852,11 @@ async function boot() {
   route();
 }
 
+// Простая установка как приложение (PWA). Работает только по HTTPS.
+if ("serviceWorker" in navigator) {
+  window.addEventListener("load", () => {
+    navigator.serviceWorker.register("sw.js").catch(() => {});
+  });
+}
+
 boot();
