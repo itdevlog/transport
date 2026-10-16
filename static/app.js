@@ -30,14 +30,28 @@ function fillTypeDots(box, ids) {
   box.appendChild(el("span", { class: "type-names" }, [ids.map(routeTypeName).join(" · ")]));
 }
 
-async function loadStopTypes(sid) {
+async function loadStopRoutes(sid) {
   try {
     const data = await api("/api/stop-routes?sid=" + encodeURIComponent(sid));
-    return typeIdsFromRoutes(data.routes);
+    return data.routes || [];
   } catch (err) {
     return [];
   }
 }
+
+async function loadStopTypes(sid) {
+  return typeIdsFromRoutes(await loadStopRoutes(sid));
+}
+
+// Состояние интерфейса, переживающее переходы: hash-роутер каждый раз
+// перерисовывает вид целиком, поэтому фильтры и прокрутку храним здесь.
+const uiState = {
+  stops: { q: "" },
+  routes: { q: "", type: "" },
+  scroll: {},
+  current: null,
+  pendingScroll: null,
+};
 
 function formatEta(sec) {
   if (sec === null || sec === undefined || isNaN(sec) || sec < 0) return "—";
@@ -444,6 +458,8 @@ async function renderFavorites(view) {
       nameLine.appendChild(noteChip);
       const typeDots = el("span", { class: "type-dots hidden" });
       nameLine.appendChild(typeDots);
+      const chips = el("span", { class: "route-chips hidden" });
+      nameLine.appendChild(chips);
       const noteInput = el("input", {
         class: "note-input hidden", type: "text", placeholder: "заметка",
         maxlength: "60", "aria-label": "Заметка к остановке",
@@ -460,9 +476,13 @@ async function renderFavorites(view) {
       head.appendChild(starButton("stop", s.id, s.name));
 
       const panel = forecastPanel(s.id, s);
-      loadStopTypes(s.id).then((ids) => {
+      loadStopRoutes(s.id).then((routes) => {
         if (gen !== routeGen) return;
-        fillTypeDots(typeDots, ids);
+        fillTypeDots(typeDots, typeIdsFromRoutes(routes));
+        if (routes.length) {
+          chips.classList.remove("hidden");
+          fillRouteChips(chips, routes);
+        }
       });
       panels.set(sid, panel);
       const details = el("div", { class: "stop-details hidden" });
@@ -567,6 +587,8 @@ async function renderRoutes(view) {
     const option = el("option", { value: pair[0] }, [pair[1]]);
     typeSel.appendChild(option);
   });
+  search.value = uiState.routes.q;
+  typeSel.value = uiState.routes.type;
   controls.appendChild(search);
   controls.appendChild(typeSel);
   view.appendChild(controls);
@@ -594,13 +616,21 @@ async function renderRoutes(view) {
     });
     if (!filtered.length) {
       listBox.appendChild(el("div", { class: "empty" }, ["Ничего не найдено."]));
+      applyPendingScroll();
       return;
     }
     filtered.forEach((r) => listBox.appendChild(routeRow(r)));
+    applyPendingScroll();
   }
 
-  search.addEventListener("input", draw);
-  typeSel.addEventListener("change", draw);
+  search.addEventListener("input", () => {
+    uiState.routes.q = search.value;
+    draw();
+  });
+  typeSel.addEventListener("change", () => {
+    uiState.routes.type = typeSel.value;
+    draw();
+  });
   draw();
 }
 
@@ -688,14 +718,19 @@ function platformWord(n) {
   return "платформ";
 }
 
-function routeChips(routes) {
-  const box = el("div", { class: "route-chips" });
+function fillRouteChips(box, routes) {
+  box.innerHTML = "";
   (routes || []).forEach((r) => {
     box.appendChild(el("span", {
       class: "chip " + routeTypeClass(r.routeTypeId),
       title: routeTypeName(r.routeTypeId) + " " + (r.name || r.number || ""),
     }, [String(r.number || r.shortName || "?")]));
   });
+}
+
+function routeChips(routes) {
+  const box = el("div", { class: "route-chips" });
+  fillRouteChips(box, routes);
   return box;
 }
 
@@ -757,6 +792,7 @@ async function renderStops(view) {
   view.appendChild(el("h2", {}, ["Поиск остановок"]));
   const controls = el("div", { class: "controls" });
   const search = el("input", { type: "search", placeholder: "Название остановки" });
+  search.value = uiState.stops.q;
   controls.appendChild(search);
   view.appendChild(controls);
   const listBox = el("div");
@@ -771,15 +807,18 @@ async function renderStops(view) {
       const groups = groupStops(stops);
       if (!groups.length) {
         listBox.appendChild(el("div", { class: "empty" }, ["Ничего не найдено."]));
+        applyPendingScroll();
         return;
       }
       groups.slice(0, 100).forEach((group) => listBox.appendChild(renderStopGroup(group)));
     } catch (err) {
       showBanner("Поиск не удался: " + err.message, "error");
     }
+    applyPendingScroll();
   }
 
   search.addEventListener("input", () => {
+    uiState.stops.q = search.value;
     clearTimeout(debounce);
     debounce = setTimeout(run, 250);
   });
@@ -826,13 +865,23 @@ function stopRefresh() {
   }
 }
 
+function applyPendingScroll() {
+  if (uiState.pendingScroll === null) return;
+  const y = uiState.pendingScroll;
+  uiState.pendingScroll = null;
+  window.scrollTo(0, y);
+}
+
 async function route() {
   stopRefresh();
   routeGen += 1;
   showBanner("");
+  const hash = location.hash || "#/";
+  if (uiState.current !== null) uiState.scroll[uiState.current] = window.scrollY;
+  uiState.current = hash;
+  uiState.pendingScroll = uiState.scroll[hash] || 0;
   const view = document.getElementById("view");
   view.innerHTML = "";
-  const hash = location.hash || "#/";
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "") return renderFavorites(view);
   if (parts[0] === "routes") return renderRoutes(view);

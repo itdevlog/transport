@@ -330,6 +330,10 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .stop-group-head.open { border-color: var(--accent); }
 .stop-group-body { padding-left: 8px; border-left: 2px solid var(--line); }
 
+/* Чипы маршрутов в карточке избранной остановки (видны в свёрнутой строке) */
+.route-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; vertical-align: middle; margin-left: 6px; }
+.route-chips.hidden { display: none; }
+
 @media (min-width: 720px) {
   #view { padding: 22px; }
 }
