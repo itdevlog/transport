@@ -6,8 +6,10 @@
 прогнозами и данными о бортах.
 """
 
+import json
 import sqlite3
 import threading
+import time
 
 SCHEMA_VERSION = 1
 
@@ -127,3 +129,84 @@ class Catalog:
             "counts": self.counts(),
             "lastError": self._last_error,
         }
+
+    def rebuild_from(self, stops, routes, details):
+        conn = self._connect()
+        try:
+            with conn:
+                conn.execute("DELETE FROM stops")
+                conn.execute("DELETE FROM routes")
+                conn.execute("DELETE FROM stop_routes")
+                conn.execute("DELETE FROM route_detail")
+
+                for s in stops or []:
+                    if not isinstance(s, dict):
+                        continue
+                    conn.execute(
+                        "INSERT OR REPLACE INTO stops"
+                        "(id, name, lat, lng, direction, adress, description, shortname)"
+                        " VALUES(?,?,?,?,?,?,?,?)",
+                        (
+                            s.get("id"),
+                            s.get("name", "") or "",
+                            s.get("lat"),
+                            s.get("lng"),
+                            s.get("direction"),
+                            s.get("adress", "") or "",
+                            s.get("description", "") or "",
+                            s.get("shortname", "") or "",
+                        ),
+                    )
+
+                for r in routes or []:
+                    if not isinstance(r, dict):
+                        continue
+                    conn.execute(
+                        "INSERT OR REPLACE INTO routes"
+                        "(id, number, name, short_name, route_type_id, company,"
+                        " from_station, to_station, price)"
+                        " VALUES(?,?,?,?,?,?,?,?,?)",
+                        (
+                            r.get("id"),
+                            r.get("number", "") or "",
+                            r.get("name", "") or "",
+                            r.get("shortName", "") or "",
+                            r.get("routeTypeId"),
+                            r.get("companyName", "") or "",
+                            r.get("fromStation", "") or "",
+                            r.get("toStation", "") or "",
+                            r.get("price", "") or "",
+                        ),
+                    )
+
+                for rid, detail in (details or {}).items():
+                    if not isinstance(detail, dict):
+                        detail = {}
+                    conn.execute(
+                        "INSERT OR REPLACE INTO route_detail(route_id, payload) VALUES(?,?)",
+                        (rid, json.dumps(detail, ensure_ascii=False)),
+                    )
+                    for sub in detail.get("subroutes") or []:
+                        if not isinstance(sub, dict):
+                            continue
+                        stations = sub.get("stations")
+                        if not isinstance(stations, list):
+                            continue
+                        for st in stations:
+                            if not isinstance(st, dict):
+                                continue
+                            sid = st.get("id")
+                            if sid is None:
+                                continue
+                            conn.execute(
+                                "INSERT OR IGNORE INTO stop_routes(stop_id, route_id) VALUES(?,?)",
+                                (sid, rid),
+                            )
+
+                conn.execute(
+                    "INSERT OR REPLACE INTO meta(key, value) VALUES('last_refresh', ?)",
+                    (str(int(time.time())),),
+                )
+        finally:
+            conn.close()
+        return {"stops": len(stops or []), "routes": len(routes or [])}
