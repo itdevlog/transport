@@ -116,27 +116,49 @@ def _resolve_name(portal, kind, item_id):
     return None
 
 
-def handle_api(path, params, method, body, portal, store):
+def _catalog_ready(catalog):
+    return catalog is not None and catalog.ready()
+
+
+def handle_api(path, params, method, body, portal, store, catalog=None):
     try:
         if path == "/api/routes" and method == "GET":
-            routes = portal.get_routes()
-            rtype = params.get("type")
-            if rtype is not None:
-                routes = [r for r in routes if str(r.get("routeTypeId")) == str(rtype)]
+            if _catalog_ready(catalog):
+                routes = catalog.all_routes(params.get("type"))
+            else:
+                routes = portal.get_routes()
+                rtype = params.get("type")
+                if rtype is not None:
+                    routes = [r for r in routes if str(r.get("routeTypeId")) == str(rtype)]
             return 200, {"routes": routes}
 
         if path == "/api/route" and method == "GET":
             rid = _as_int(params.get("id"))
             if rid is None:
                 return 400, {"error": {"reason": "bad_param", "message": "id required"}}
-            return 200, {"route": portal.get_route(rid)}
+            route = catalog.get_route(rid) if _catalog_ready(catalog) else portal.get_route(rid)
+            return 200, {"route": route}
 
         if path == "/api/stations" and method == "GET":
-            q = (params.get("q") or "").strip().lower()
-            stations = portal.get_stations()
-            if q:
-                stations = [s for s in stations if q in (s.get("name") or "").lower()]
+            q = (params.get("q") or "").strip()
+            if _catalog_ready(catalog):
+                stations = catalog.search_stations(q)
+            else:
+                stations = portal.get_stations()
+                if q:
+                    stations = [s for s in stations if q.lower() in (s.get("name") or "").lower()]
             return 200, {"stations": stations}
+
+        if path == "/api/stops" and method == "GET":
+            q = (params.get("q") or "").strip()
+            if _catalog_ready(catalog):
+                stops = catalog.stops_with_routes(q)
+            else:
+                stops = portal.get_stations()
+                if q:
+                    stops = [s for s in stops if q.lower() in (s.get("name") or "").lower()]
+                stops = [dict(s, routes=[]) for s in stops]
+            return 200, {"stops": stops}
 
         if path == "/api/forecast" and method == "GET":
             sid = _as_int(params.get("sid"))
@@ -153,7 +175,9 @@ def handle_api(path, params, method, body, portal, store):
             sid = _as_int(params.get("sid"))
             if sid is None:
                 return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
-            return 200, {"routes": portal.get_station_routes(sid)}
+            routes = catalog.routes_for_stop(sid) if _catalog_ready(catalog) \
+                else portal.get_station_routes(sid)
+            return 200, {"routes": routes}
 
         if path == "/api/vehicle" and method == "GET":
             code = params.get("deviceCode")
@@ -163,6 +187,16 @@ def handle_api(path, params, method, body, portal, store):
                 "vehicle": portal.get_vehicle(code),
                 "forecasts": portal.get_vehicle_forecasts(code),
             }
+
+        if path == "/api/catalog" and method == "GET":
+            if catalog is None:
+                return 200, {"enabled": False}
+            return 200, {"enabled": True, **catalog.status()}
+
+        if path == "/api/refresh" and method == "POST":
+            if catalog is None:
+                return 200, {"status": "disabled"}
+            return 200, {"status": catalog.refresh_async(portal)}
 
         if path == "/api/favorites" and method == "GET":
             return 200, store.load()

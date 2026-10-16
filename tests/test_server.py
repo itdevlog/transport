@@ -7,6 +7,7 @@ import unittest.mock
 import urllib.error
 import urllib.request
 
+import catalog
 import server
 
 CONFIG_HTTP = {
@@ -458,6 +459,52 @@ class LoadConfigTest(unittest.TestCase):
         self._write("config.json", [1, 2, 3])
         config = server.load_config(self.path)
         self.assertEqual(config["port"], 8000)
+
+
+class CatalogIntegrationTest(unittest.TestCase):
+    def setUp(self):
+        self.dir = tempfile.TemporaryDirectory()
+        self.store = server.FavoritesStore(os.path.join(self.dir.name, "favorites.json"))
+        self.portal = FakePortal()
+
+    def tearDown(self):
+        self.dir.cleanup()
+
+    def _catalog(self):
+        c = catalog.Catalog(os.path.join(self.dir.name, "catalog.db"))
+        c.rebuild_from(
+            [{"id": 5830, "name": "Академия тенниса", "lat": 56.7, "lng": 60.5, "direction": -29}],
+            [{"id": 1554, "number": "87", "name": "n", "shortName": "А-87", "routeTypeId": 1}],
+            {1554: {"subroutes": [{"stations": [{"id": 5830}]}]}},
+        )
+        return c
+
+    def call(self, path, params=None, method="GET", body=None, catalog=None):
+        return server.handle_api(path, params or {}, method, body, self.portal, self.store, catalog)
+
+    def test_stops_endpoint_from_catalog(self):
+        status, payload = self.call("/api/stops", {"q": "тенниса"}, catalog=self._catalog())
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["stops"][0]["id"], 5830)
+        self.assertEqual(payload["stops"][0]["routes"][0]["number"], "87")
+
+    def test_reference_endpoints_fall_back_to_portal(self):
+        status, payload = self.call("/api/stop-routes", {"sid": "5830"}, catalog=None)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["routes"][0]["routeTypeId"], 1)  # FakePortal path
+
+    def test_reference_endpoints_prefer_catalog(self):
+        status, payload = self.call("/api/routes", catalog=self._catalog())
+        self.assertEqual([r["number"] for r in payload["routes"]], ["87"])
+
+    def test_catalog_status_and_refresh(self):
+        c = self._catalog()
+        status, payload = self.call("/api/catalog", catalog=c)
+        self.assertTrue(payload["enabled"])
+        status, payload = self.call("/api/refresh", method="POST", catalog=c)
+        self.assertIn(payload["status"], ("started", "building"))
+        status, payload = self.call("/api/refresh", method="POST", catalog=None)
+        self.assertEqual(payload["status"], "disabled")
 
 
 if __name__ == "__main__":
