@@ -2,6 +2,7 @@ import json
 import os
 import sqlite3
 import tempfile
+import threading
 import unittest
 
 import profiles
@@ -85,3 +86,14 @@ class ProfilesMutationTest(unittest.TestCase):
                          {"Академика Ландау": "домой"})
         self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "")
         self.assertNotIn("dirs", self.store.get(self.uid)["stops"][0])
+
+    def test_concurrent_adds_do_not_lose_updates(self):
+        def worker(i):
+            self.store.add(self.uid, "stop", {"id": 1000 + i, "name": "s%d" % i})
+
+        threads = [threading.Thread(target=worker, args=(i,)) for i in range(20)]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        self.assertEqual(len(self.store.get(self.uid)["stops"]), 20)
