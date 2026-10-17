@@ -286,10 +286,13 @@ class Catalog:
         conn = self._connect()
         try:
             if route_type is None:
-                rows = conn.execute("SELECT * FROM routes").fetchall()
+                rows = conn.execute(
+                    "SELECT * FROM routes ORDER BY route_type_id, number"
+                ).fetchall()
             else:
                 rows = conn.execute(
-                    "SELECT * FROM routes WHERE route_type_id = ?", (route_type,)
+                    "SELECT * FROM routes WHERE route_type_id = ? ORDER BY number",
+                    (route_type,),
                 ).fetchall()
             return [self._route_row(r) for r in rows]
         finally:

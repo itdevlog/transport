@@ -1,7 +1,7 @@
 "use strict";
 
 // Кэш «оболочки» приложения. Прогнозы и прочие /api/* — только сеть.
-const CACHE = "marshrut-v1";
+const CACHE = "marshrut-v2";
 const ASSETS = [
   "/",
   "/index.html",
@@ -41,7 +41,16 @@ self.addEventListener("fetch", (event) => {
   if (url.origin !== self.location.origin) return;
   // Справочные и живые данные всегда берём из сети.
   if (url.pathname.indexOf("/api/") === 0) return;
+  // Оболочку обновляем по сети при каждом запросе (кэш — только офлайн-запаска).
+  // Раньше была стратегия cache-first с фиксированным именем кэша, из-за чего
+  // правки app.js/style.css не доходили до уже установивших приложение браузеров.
   event.respondWith(
-    caches.match(request).then((cached) => cached || fetch(request))
+    fetch(request)
+      .then((response) => {
+        const copy = response.clone();
+        caches.open(CACHE).then((cache) => cache.put(request, copy));
+        return response;
+      })
+      .catch(() => caches.match(request))
   );
 });

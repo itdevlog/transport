@@ -70,6 +70,18 @@ class CatalogRebuildFromTest(unittest.TestCase):
         self.c.rebuild_from(self.stops[:1], self.routes, {})
         self.assertEqual(self.c.counts(), {"stops": 1, "routes": 1})
 
+    def test_all_routes_follow_portal_order(self):
+        routes = [
+            {"id": 3, "number": "7", "routeTypeId": 4, "name": "трамвай"},
+            {"id": 1, "number": "50", "routeTypeId": 1, "name": "автобус"},
+            {"id": 2, "number": "043", "routeTypeId": 1, "name": "автобус 043"},
+            {"id": 4, "number": "1", "routeTypeId": 2, "name": "троллейбус"},
+        ]
+        self.c.rebuild_from(self.stops, routes, {})
+        self.assertEqual([r["number"] for r in self.c.all_routes()],
+                         ["043", "50", "1", "7"])
+        self.assertEqual([r["number"] for r in self.c.all_routes(1)], ["043", "50"])
+
     def test_malformed_detail_is_skipped(self):
         result = self.c.rebuild_from(self.stops, self.routes,
                                      {1554: {"subroutes": [{"stations": None}, "junk"]}})
