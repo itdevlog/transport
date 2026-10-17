@@ -734,22 +734,53 @@ function routeChips(routes) {
   return box;
 }
 
-// Строка остановки с обогащением: название + точки видов + чипы маршрутов.
+// Карточка остановки в поиске: свёрнутая строка, клик раскрывает прогноз снизу.
 function stopResultRow(st) {
-  const row = el("div", { class: "row stop-result" });
+  const card = el("div", { class: "card stop-card" });
+  const head = el("div", {
+    class: "row stop-head", role: "button", tabindex: "0", "aria-expanded": "false",
+  });
+  const chevron = el("span", { class: "chevron" }, ["▸"]);
+  head.appendChild(chevron);
   const main = el("div", { class: "main" });
-  const link = el("a", { class: "link", href: "#/stop/" + encodeURIComponent(st.id) });
   const nameLine = el("div", { class: "name" }, [st.name || ("Остановка " + st.id)]);
   const dots = el("span", { class: "type-dots" });
   fillTypeDots(dots, typeIdsFromRoutes(st.routes));
   nameLine.appendChild(document.createTextNode(" "));
   nameLine.appendChild(dots);
-  link.appendChild(nameLine);
-  if (st.routes && st.routes.length) link.appendChild(routeChips(st.routes));
-  main.appendChild(link);
-  row.appendChild(main);
-  row.appendChild(starButton("stop", st.id, st.name));
-  return row;
+  main.appendChild(nameLine);
+  if (st.routes && st.routes.length) main.appendChild(routeChips(st.routes));
+  head.appendChild(main);
+  head.appendChild(starButton("stop", st.id, st.name));
+
+  const panel = forecastPanel(st.id, st);
+  const details = el("div", { class: "stop-details hidden" });
+  details.appendChild(panel.list);
+  const openBox = el("div", { class: "stop-open" });
+  openBox.appendChild(el("a", { class: "link", href: "#/stop/" + encodeURIComponent(st.id) },
+    ["Все прибытия и обновление →"]));
+  details.appendChild(openBox);
+
+  let open = false;
+  function toggle() {
+    open = !open;
+    details.classList.toggle("hidden", !open);
+    card.classList.toggle("open", open);
+    head.setAttribute("aria-expanded", open ? "true" : "false");
+    chevron.textContent = open ? "▾" : "▸";
+    if (open) panel.tick();
+  }
+  head.addEventListener("click", toggle);
+  head.addEventListener("keydown", (event) => {
+    if (event.key === "Enter" || event.key === " ") {
+      event.preventDefault();
+      toggle();
+    }
+  });
+
+  card.appendChild(head);
+  card.appendChild(details);
+  return card;
 }
 
 // Группа «платформ»: одна строка-заголовок, по клику разворачивается.

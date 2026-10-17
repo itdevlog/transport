@@ -301,7 +301,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .vehicle-card .eta { color: var(--muted); font-weight: 600; white-space: nowrap; }
 
 /* Поиск остановок: обогащение (чипы) и группировка платформ */
-.stop-result .route-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
+.stop-head .main > .route-chips { display: flex; flex-wrap: wrap; gap: 4px; margin-top: 5px; }
 .route-chips .chip {
   display: inline-block;
   padding: 0 7px;
