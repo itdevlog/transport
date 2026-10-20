@@ -58,5 +58,13 @@ class MapViewTest(unittest.TestCase):
         self.assertIn(".map-sheet.open", css)
         self.assertIn("translateY(100%)", css)
 
+    def test_stop_links_open_on_map(self):
+        app = _read("app.js")
+        self.assertIn('"#/map/"', app)
+        self.assertIn("renderMap(view, focusId)", app)
+        self.assertIn("/api/stop?sid=", app)
+        # Страница остановки берёт настоящее название, а не id.
+        self.assertIn("heading.textContent = stop.name", app)
+
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v7", _read("sw.js"))
+        self.assertIn("marshrut-v8", _read("sw.js"))

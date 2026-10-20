@@ -475,10 +475,13 @@ async function renderFavorites(view) {
       panels.set(sid, panel);
       const details = el("div", { class: "stop-details hidden" });
       details.appendChild(panel.list);
-      details.appendChild(el("div", { class: "stop-open" }, [
-        el("a", { class: "link", href: "#/stop/" + encodeURIComponent(s.id) },
-          ["Все прибытия и обновление →"]),
-      ]));
+      const openBox = el("div", { class: "stop-open" });
+      openBox.appendChild(el("a", { class: "link", href: "#/stop/" + encodeURIComponent(s.id) },
+        ["Все прибытия и обновление →"]));
+      openBox.appendChild(document.createTextNode(" · "));
+      openBox.appendChild(el("a", { class: "link", href: "#/map/" + encodeURIComponent(s.id) },
+        ["На карте"]));
+      details.appendChild(openBox);
 
       function toggle() {
         const willOpen = !expanded.has(sid);
@@ -697,6 +700,9 @@ function stopResultRow(st) {
   const openBox = el("div", { class: "stop-open" });
   openBox.appendChild(el("a", { class: "link", href: "#/stop/" + encodeURIComponent(st.id) },
     ["Все прибытия и обновление →"]));
+  openBox.appendChild(document.createTextNode(" · "));
+  openBox.appendChild(el("a", { class: "link", href: "#/map/" + encodeURIComponent(st.id) },
+    ["На карте"]));
   details.appendChild(openBox);
 
   let open = false;
@@ -797,7 +803,14 @@ async function renderStops(view) {
 async function renderStop(view, sid) {
   const gen = routeGen;
   const fav = favorites.stops.find((s) => String(s.id) === String(sid));
-  view.appendChild(el("h2", {}, [fav && fav.name ? fav.name : ("Остановка " + sid)]));
+  const heading = el("h2", {}, [fav && fav.name ? fav.name : ("Остановка " + sid)]);
+  view.appendChild(heading);
+  // В адресе только id — настоящее название добираем с сервера.
+  api("/api/stop?sid=" + encodeURIComponent(sid)).then((data) => {
+    if (gen !== routeGen) return;
+    const stop = data && data.stop;
+    if (stop && stop.name) heading.textContent = stop.name;
+  }).catch(() => {});
   const subLine = el("div", { class: "sub" }, ["Прибытие по всем маршрутам"]);
   const typeDots = el("span", { class: "type-dots hidden" });
   subLine.appendChild(document.createTextNode(" "));
@@ -807,6 +820,9 @@ async function renderStop(view, sid) {
   starRow.appendChild(starButton("stop", Number(sid), fav && fav.name));
   starRow.appendChild(el("div", { class: "main" }, ["Добавить остановку в избранное"]));
   view.appendChild(starRow);
+  view.appendChild(el("div", { class: "stop-open" }, [
+    el("a", { class: "link", href: "#/map/" + encodeURIComponent(sid) }, ["Показать на карте"]),
+  ]));
 
   const panel = forecastPanel(sid, fav || null);
   view.appendChild(panel.list);
@@ -914,7 +930,7 @@ function mapStopCard(st) {
   return card;
 }
 
-async function renderMap(view) {
+async function renderMap(view, focusId) {
   const gen = routeGen;
   view.appendChild(el("h2", {}, ["Карта остановок"]));
   view.appendChild(el("div", { class: "sub" }, ["Нажмите на остановку, чтобы увидеть прогноз."]));
@@ -1113,6 +1129,21 @@ async function renderMap(view) {
       map.getCanvas().style.cursor = "";
     });
 
+    // Переход из карточки остановки: сразу показываем её на карте.
+    if (focusId) {
+      const target = stops.find((s) => String(s.id) === String(focusId));
+      if (target) {
+        const feature = features.find((f) => String(f.properties.id) === String(focusId));
+        map.jumpTo({ center: [target.lng, target.lat], zoom: 15 });
+        selectedSource = map.getSource("selected-stop");
+        openSheet(target, feature || {
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [target.lng, target.lat] },
+          properties: { id: target.id, name: target.name || "" },
+        });
+      }
+    }
+
     // «Моё место»: координаты считает браузер, на сервер они не уходят.
     const geoButton = el("button", {
       class: "map-geo", type: "button", title: "Моё место", "aria-label": "Моё место",
@@ -1204,7 +1235,7 @@ async function route() {
   if (parts[0] === "routes") return renderRoutes(view);
   if (parts[0] === "route") return renderRoute(view, parts[1]);
   if (parts[0] === "stops") return renderStops(view);
-  if (parts[0] === "map") return renderMap(view);
+  if (parts[0] === "map") return renderMap(view, parts[1]);
   if (parts[0] === "stop") return renderStop(view, parts[1]);
   view.appendChild(el("div", { class: "empty" }, ["Страница не найдена."]));
 }

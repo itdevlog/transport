@@ -266,6 +266,18 @@ def handle_api(path, params, method, body, portal, store, catalog=None,
             )
             return 200, {"forecasts": forecasts}
 
+        if path == "/api/stop" and method == "GET":
+            sid = _as_int(params.get("sid"))
+            if sid is None:
+                return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
+            stop = _with_catalog(
+                catalog, lambda c: c.get_stop(sid),
+                lambda: next((s for s in portal.get_stations()
+                              if str(s.get("id")) == str(sid)), {}))
+            if not stop:
+                return 404, {"error": {"reason": "not_found", "message": "stop"}}
+            return 200, {"stop": stop}
+
         if path == "/api/stop-routes" and method == "GET":
             sid = _as_int(params.get("sid"))
             if sid is None:

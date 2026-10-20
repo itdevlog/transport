@@ -313,6 +313,14 @@ class Catalog:
         except (TypeError, ValueError):
             return {}
 
+    def get_stop(self, sid):
+        conn = self._connect()
+        try:
+            row = conn.execute("SELECT * FROM stops WHERE id = ?", (sid,)).fetchone()
+        finally:
+            conn.close()
+        return self._station_row(row) if row is not None else {}
+
     def search_stations(self, q):
         needle = (q or "").strip().lower()
         conn = self._connect()

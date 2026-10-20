@@ -266,6 +266,19 @@ class HandleApiTest(unittest.TestCase):
         status, _ = self.call("/api/stop-routes", {})
         self.assertEqual(status, 400)
 
+    def test_stop_by_id(self):
+        status, payload = self.call("/api/stop", {"sid": "5830"})
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["stop"]["name"], "Академия тенниса")
+
+    def test_stop_requires_sid(self):
+        status, _ = self.call("/api/stop", {})
+        self.assertEqual(status, 400)
+
+    def test_stop_unknown_is_404(self):
+        status, _ = self.call("/api/stop", {"sid": "999999"})
+        self.assertEqual(status, 404)
+
     def test_vehicle_ok(self):
         status, payload = self.call("/api/vehicle", {"deviceCode": "X"})
         self.assertEqual(status, 200)
@@ -531,6 +544,12 @@ class CatalogIntegrationTest(unittest.TestCase):
         self.assertEqual(status, 200)
         self.assertEqual(payload["stops"][0]["id"], 5830)
         self.assertEqual(payload["stops"][0]["routes"][0]["number"], "87")
+
+    def test_stop_endpoint_from_catalog(self):
+        c = self._catalog()
+        status, payload = self.call("/api/stop", {"sid": "5830"}, catalog=c)
+        self.assertEqual(status, 200)
+        self.assertEqual(payload["stop"]["name"], "Академия тенниса")
 
     def test_reference_endpoints_fall_back_to_portal(self):
         status, payload = self.call("/api/stop-routes", {"sid": "5830"}, catalog=None)
