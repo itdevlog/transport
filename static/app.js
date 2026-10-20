@@ -811,6 +811,21 @@ function loadMapLibre() {
   return maplibrePromise;
 }
 
+// Стиль liberty тянет ещё и спрайт с иконками (~50 КБ). Нам нужны только
+// тайлы и подписи, поэтому спрайт вырезаем: меньше трафика и никаких ошибок,
+// если запрос к нему обрывается (бывает на мобильных сетях).
+async function loadMapStyle() {
+  try {
+    const response = await fetch(MAP_STYLE);
+    if (!response.ok) throw new Error("HTTP " + response.status);
+    const style = await response.json();
+    delete style.sprite;
+    return style;
+  } catch (err) {
+    return MAP_STYLE;
+  }
+}
+
 // Все остановки города одним запросом (~36 КБ gzip) и держим в памяти:
 // при возврате на карту повторного запроса нет.
 function loadMapStops() {
@@ -889,9 +904,12 @@ async function renderMap(view, focusId) {
   }
   if (gen !== routeGen) return;
 
+  const style = await loadMapStyle();
+  if (gen !== routeGen) return;
+
   const map = new maplibregl.Map({
     container: mapBox,
-    style: MAP_STYLE,
+    style: style,
     center: MAP_CENTER,
     zoom: 12,
     minZoom: 11,

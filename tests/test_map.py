@@ -43,6 +43,8 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("maplibregl.Map", app)
         self.assertIn("tiles.openfreemap.org/styles/liberty", app)
         self.assertIn("AttributionControl({ compact: true })", app)
+        # Спрайт стиля (~50 КБ) не нужен: только тайлы и подписи.
+        self.assertIn("delete style.sprite", app)
         # «i» не должна стоять вплотную к кнопке «Моё место».
         self.assertIn('"bottom-left"', app)
         self.assertNotIn("leaflet", app.lower())
@@ -99,4 +101,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("heading.textContent = stop.name", app)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v10", _read("sw.js"))
+        self.assertIn("marshrut-v11", _read("sw.js"))

@@ -92,6 +92,8 @@ class ApplePwaTest(unittest.TestCase):
         html = _read("index.html")
         self.assertIn("apple-mobile-web-app-capable", html)
         self.assertIn("apple-mobile-web-app-title", html)
+        # Современный аналог: без него Chrome ругается на deprecated-мету.
+        self.assertIn("mobile-web-app-capable", html)
         self.assertIn("apple-touch-icon.png", html)
 
     def test_manifest_includes_png_icons(self):
