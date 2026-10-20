@@ -38,13 +38,15 @@ class MapViewTest(unittest.TestCase):
         self.assertIn('if (parts[0] === "favorites") return renderFavorites(view);', app)
         self.assertIn("markNav(parts)", app)
 
-    def test_app_uses_openfreemap_with_compact_attribution(self):
+    def test_app_uses_osm_raster_tiles_with_compact_attribution(self):
         app = _read("app.js")
         self.assertIn("maplibregl.Map", app)
-        self.assertIn("tiles.openfreemap.org/styles/liberty", app)
+        # Векторные тайлы OpenFreeMap (Cloudflare) в части сетей обрываются,
+        # поэтому подложка — растровые тайлы OSM.
+        self.assertIn("tile.openstreetmap.org/{z}/{x}/{y}.png", app)
+        self.assertIn('type: "raster"', app)
         self.assertIn("AttributionControl({ compact: true })", app)
-        # Спрайт стиля (~50 КБ) не нужен: только тайлы и подписи.
-        self.assertIn("delete style.sprite", app)
+        self.assertNotIn("openfreemap", app.lower())
         # «i» не должна стоять вплотную к кнопке «Моё место».
         self.assertIn('"bottom-left"', app)
         self.assertNotIn("leaflet", app.lower())
@@ -101,4 +103,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("heading.textContent = stop.name", app)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v11", _read("sw.js"))
+        self.assertIn("marshrut-v12", _read("sw.js"))

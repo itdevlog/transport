@@ -771,13 +771,25 @@ async function renderStop(view, sid) {
   refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
 }
 
-/* ---------- карта остановок (MapLibre + OpenFreeMap) ---------- */
+/* ---------- карта остановок (MapLibre + растровые тайлы OSM) ---------- */
 
 // MapLibre ждёт координаты в порядке [долгота, широта].
 // Прямоугольник ограничивает карту Екатеринбургом и ближними окраинами.
 const CITY_BOUNDS = [[60.35, 56.68], [60.85, 56.99]];
 const MAP_CENTER = [60.6057, 56.8389];
-const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+const MAP_STYLE = {
+  version: 8,
+  sources: {
+    osm: {
+      type: "raster",
+      tiles: ["https://tile.openstreetmap.org/{z}/{x}/{y}.png"],
+      tileSize: 256,
+      maxzoom: 19,
+      attribution: '© <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors',
+    },
+  },
+  layers: [{ id: "osm", type: "raster", source: "osm" }],
+};
 // Стрелка «моё место»: поворачиваем внутренний svg, потому что transform самого
 // элемента занят MapLibre (он позиционирует маркер через translate).
 const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
@@ -809,21 +821,6 @@ function loadMapLibre() {
     document.head.appendChild(script);
   });
   return maplibrePromise;
-}
-
-// Стиль liberty тянет ещё и спрайт с иконками (~50 КБ). Нам нужны только
-// тайлы и подписи, поэтому спрайт вырезаем: меньше трафика и никаких ошибок,
-// если запрос к нему обрывается (бывает на мобильных сетях).
-async function loadMapStyle() {
-  try {
-    const response = await fetch(MAP_STYLE);
-    if (!response.ok) throw new Error("HTTP " + response.status);
-    const style = await response.json();
-    delete style.sprite;
-    return style;
-  } catch (err) {
-    return MAP_STYLE;
-  }
 }
 
 // Все остановки города одним запросом (~36 КБ gzip) и держим в памяти:
@@ -904,12 +901,9 @@ async function renderMap(view, focusId) {
   }
   if (gen !== routeGen) return;
 
-  const style = await loadMapStyle();
-  if (gen !== routeGen) return;
-
   const map = new maplibregl.Map({
     container: mapBox,
-    style: style,
+    style: MAP_STYLE,
     center: MAP_CENTER,
     zoom: 12,
     minZoom: 11,
