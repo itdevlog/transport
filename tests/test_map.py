@@ -43,8 +43,17 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("maplibregl.Map", app)
         self.assertIn("tiles.openfreemap.org/styles/liberty", app)
         self.assertIn("AttributionControl({ compact: true })", app)
+        # «i» не должна стоять вплотную к кнопке «Моё место».
+        self.assertIn('"bottom-left"', app)
         self.assertNotIn("leaflet", app.lower())
         self.assertIn('parts[0] === "map"', app)
+
+    def test_map_controls_are_touch_friendly(self):
+        css = _read("style.css")
+        self.assertIn(".map .maplibregl-ctrl-group button", css)
+        self.assertIn("width: 44px", css)
+        self.assertIn("height: 44px", css)
+        self.assertIn(".map-geo", css)
 
     def test_app_has_geolocation_button(self):
         app = _read("app.js")
@@ -90,4 +99,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("heading.textContent = stop.name", app)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v9", _read("sw.js"))
+        self.assertIn("marshrut-v10", _read("sw.js"))

@@ -900,8 +900,9 @@ async function renderMap(view, focusId) {
     attributionControl: false,
   });
   mapInstance = map;
-  // Постоянной плашки нет: атрибуция свёрнута в кнопку «i».
-  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+  // Постоянной плашки нет: атрибуция свёрнута в кнопку «i» и убрана
+  // в левый нижний угол, чтобы не путать её с кнопкой «Моё место».
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("error", () => {}); // тайлы могут не догрузиться — карта остаётся рабочей
 

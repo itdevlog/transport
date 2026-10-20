@@ -412,13 +412,13 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .map-geo {
   position: absolute;
   right: 10px;
-  bottom: 34px;
+  bottom: 10px;
   z-index: 2;
   display: flex;
   align-items: center;
   justify-content: center;
-  width: 36px;
-  height: 36px;
+  width: 44px;
+  height: 44px;
   padding: 0;
   border-radius: 10px;
   border: 1px solid var(--line);
@@ -428,8 +428,22 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   line-height: 1;
   cursor: pointer;
 }
-.map-geo svg { display: block; width: 20px; height: 20px; }
+.map-geo svg { display: block; width: 22px; height: 22px; }
 .map-geo:disabled { opacity: .5; cursor: default; }
+
+/* Кнопки зума по умолчанию 29×29 — для пальца слишком мелкие. */
+.map .maplibregl-ctrl-group button {
+  width: 44px;
+  height: 44px;
+}
+.map .maplibregl-ctrl-group button .maplibregl-ctrl-icon {
+  background-size: 24px 24px;
+}
+/* «i» уведена в левый нижний угол (см. app.js), но и её стоит увеличить. */
+.map .maplibregl-ctrl-attrib-button {
+  width: 30px;
+  height: 30px;
+}
 .map-stop { margin-top: 10px; }
 
 @media (min-width: 720px) {
