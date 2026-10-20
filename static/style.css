@@ -334,6 +334,20 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .route-chips { display: inline-flex; flex-wrap: wrap; gap: 4px; align-items: center; vertical-align: middle; margin-left: 6px; }
 .route-chips.hidden { display: none; }
 
+/* Карта остановок */
+.map {
+  position: relative; /* свой stacking context: панели Leaflet не перекрывают шапку */
+  z-index: 0;
+  height: 62vh;
+  min-height: 320px;
+  border: 1px solid var(--line);
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
+.map .leaflet-container { font: inherit; background: var(--bg); }
+.map-stop { margin-top: 10px; }
+
 @media (min-width: 720px) {
   #view { padding: 22px; }
 }

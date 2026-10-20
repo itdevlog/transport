@@ -887,6 +887,133 @@ async function renderStop(view, sid) {
   refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
 }
 
+/* ---------- карта остановок ---------- */
+
+// Город ограничиваем прямоугольником, чтобы карту нельзя было утащить
+// в бесконечность: только Екатеринбург и ближние окраины.
+const CITY_BOUNDS = [[56.68, 60.35], [56.99, 60.85]];
+const MAP_CENTER = [56.8389, 60.6057];
+const OSM_ATTRIBUTION =
+  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+
+let leafletPromise = null;
+let mapStopsCache = null;
+let mapInstance = null;
+
+// Leaflet грузим только при первом открытии карты: остальным разделам
+// его ~150 КБ не нужны.
+function loadLeaflet() {
+  if (window.L) return Promise.resolve();
+  if (leafletPromise) return leafletPromise;
+  leafletPromise = new Promise((resolve, reject) => {
+    document.head.appendChild(el("link", {
+      rel: "stylesheet", href: "vendor/leaflet/leaflet.css",
+    }));
+    const script = el("script", { src: "vendor/leaflet/leaflet.js" });
+    script.onload = () => resolve();
+    script.onerror = () => {
+      leafletPromise = null;
+      reject(new Error("leaflet"));
+    };
+    document.head.appendChild(script);
+  });
+  return leafletPromise;
+}
+
+// Все остановки города одним запросом (~36 КБ gzip) и держим в памяти:
+// при возврате на карту повторного запроса нет.
+function loadMapStops() {
+  if (mapStopsCache) return Promise.resolve(mapStopsCache);
+  return api("/api/stations").then((data) => {
+    mapStopsCache = (data.stations || []).filter(
+      (s) => Number.isFinite(s.lat) && Number.isFinite(s.lng));
+    return mapStopsCache;
+  });
+}
+
+function mapStopCard(st) {
+  const card = el("div", { class: "card map-stop" });
+  const head = el("div", { class: "row stop-head" });
+  const main = el("div", { class: "main" });
+  main.appendChild(el("div", { class: "name" }, [st.name || ("Остановка " + st.id)]));
+  head.appendChild(main);
+  head.appendChild(starButton("stop", st.id, st.name));
+  card.appendChild(head);
+  const panel = forecastPanel(st.id, st);
+  card.appendChild(panel.list);
+  const open = el("div", { class: "stop-open" });
+  open.appendChild(el("a", {
+    class: "link",
+    href: "#/stop/" + encodeURIComponent(st.id),
+  }, ["Все прибытия и обновление →"]));
+  card.appendChild(open);
+  panel.tick();
+  return card;
+}
+
+async function renderMap(view) {
+  const gen = routeGen;
+  view.appendChild(el("h2", {}, ["Карта остановок"]));
+  view.appendChild(el("div", { class: "sub" }, ["Нажмите на остановку, чтобы увидеть прогноз."]));
+  const mapBox = el("div", { class: "map" });
+  view.appendChild(mapBox);
+  const details = el("div");
+  view.appendChild(details);
+
+  try {
+    await loadLeaflet();
+  } catch (err) {
+    mapBox.appendChild(el("div", { class: "empty" }, ["Не удалось загрузить библиотеку карты."]));
+    return;
+  }
+  if (gen !== routeGen) return;
+
+  const map = L.map(mapBox, {
+    center: MAP_CENTER,
+    zoom: 12,
+    minZoom: 11,
+    maxZoom: 17,
+    maxBounds: CITY_BOUNDS,
+    maxBoundsViscosity: 1.0,
+  });
+  mapInstance = map;
+  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
+    maxZoom: 17,
+    attribution: OSM_ATTRIBUTION,
+  }).addTo(map);
+
+  let stops;
+  try {
+    stops = await loadMapStops();
+  } catch (err) {
+    showBanner("Не удалось загрузить остановки: " + err.message, "error");
+    return;
+  }
+  if (gen !== routeGen || mapInstance !== map) return;
+
+  const renderer = L.canvas({ padding: 0.4 });
+  const base = {
+    radius: 5, weight: 1, color: "#c8102e", fillColor: "#c8102e", fillOpacity: 0.7,
+  };
+  const active = { color: "#1565c0", fillColor: "#1565c0", fillOpacity: 0.95, weight: 3 };
+  let selected = null;
+  stops.forEach((st) => {
+    const marker = L.circleMarker([st.lat, st.lng], Object.assign({ renderer: renderer }, base));
+    marker.bindTooltip(st.name || "", { direction: "top" });
+    marker.on("click", () => {
+      if (selected) selected.setStyle(base);
+      selected = marker;
+      marker.setStyle(active);
+      details.innerHTML = "";
+      details.appendChild(mapStopCard(st));
+    });
+    marker.addTo(map);
+  });
+
+  map.invalidateSize();
+  applyPendingScroll();
+}
+
 /* ---------- router ---------- */
 
 function stopRefresh() {
@@ -912,12 +1039,17 @@ async function route() {
   uiState.current = hash;
   uiState.pendingScroll = uiState.scroll[hash] || 0;
   const view = document.getElementById("view");
+  if (mapInstance) {
+    mapInstance.remove();
+    mapInstance = null;
+  }
   view.innerHTML = "";
   const parts = hash.replace(/^#\/?/, "").split("/");
   if (parts[0] === "") return renderFavorites(view);
   if (parts[0] === "routes") return renderRoutes(view);
   if (parts[0] === "route") return renderRoute(view, parts[1]);
   if (parts[0] === "stops") return renderStops(view);
+  if (parts[0] === "map") return renderMap(view);
   if (parts[0] === "stop") return renderStop(view, parts[1]);
   view.appendChild(el("div", { class: "empty" }, ["Страница не найдена."]));
 }
