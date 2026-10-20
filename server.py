@@ -65,20 +65,6 @@ class FavoritesStore:
             self._write(data)
             return data
 
-    def set_note(self, kind, item_id, note):
-        key = KIND_KEYS[kind]
-        note = (note or "").strip()
-        with self._lock:
-            data = self._read()
-            for item in data[key]:
-                if str(item.get("id")) == str(item_id):
-                    if note:
-                        item["note"] = note
-                    else:
-                        item.pop("note", None)
-            self._write(data)
-            return data
-
     def set_dir_label(self, kind, item_id, where, label):
         key = KIND_KEYS[kind]
         where = (where or "").strip()
@@ -130,9 +116,6 @@ class _LegacyFavorites:
 
     def remove(self, uid, kind, item_id):
         return self._store.remove(kind, item_id)
-
-    def set_note(self, uid, kind, item_id, note):
-        return self._store.set_note(kind, item_id, note)
 
     def set_dir_label(self, uid, kind, item_id, where, label):
         return self._store.set_dir_label(kind, item_id, where, label)
@@ -318,20 +301,11 @@ def handle_api(path, params, method, body, portal, store, catalog=None,
                 return 200, backend.get(uid)
             body = body or {}
             action, kind = body.get("action"), body.get("kind")
-            if kind not in KIND_KEYS or action not in ("add", "remove", "note", "dir"):
+            if kind not in KIND_KEYS or action not in ("add", "remove", "dir"):
                 return 400, {"error": {"reason": "bad_param", "message": "action/kind"}}
             if action == "add":
                 name = body.get("name") or _resolve_name(portal, kind, body.get("id"))
                 return 200, backend.add(uid, kind, {"id": body.get("id"), "name": name})
-            if action == "note":
-                if body.get("id") is None:
-                    return 400, {"error": {"reason": "bad_param", "message": "id required"}}
-                note = body.get("note")
-                if note is None:
-                    note = ""
-                if not isinstance(note, str) or len(note.strip()) > MAX_NOTE_LEN:
-                    return 400, {"error": {"reason": "bad_param", "message": "note too long"}}
-                return 200, backend.set_note(uid, kind, body.get("id"), note)
             if action == "dir":
                 if body.get("id") is None:
                     return 400, {"error": {"reason": "bad_param", "message": "id required"}}

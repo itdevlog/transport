@@ -72,13 +72,6 @@ class ProfilesMutationTest(unittest.TestCase):
         self.store.remove(self.uid, "stop", 5830)
         self.assertEqual(self.store.get(self.uid)["stops"], [])
 
-    def test_set_note_persists_and_clears(self):
-        self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
-        self.store.set_note(self.uid, "stop", 5830, "в школу")
-        self.assertEqual(self.store.get(self.uid)["stops"][0]["note"], "в школу")
-        self.store.set_note(self.uid, "stop", 5830, "")
-        self.assertNotIn("note", self.store.get(self.uid)["stops"][0])
-
     def test_set_dir_label_and_clear(self):
         self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
         self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "домой")

@@ -109,20 +109,6 @@ class ProfilesStore:
             self.save(uid, data)
         return data
 
-    def set_note(self, uid, kind, item_id, note):
-        key = KIND_KEYS[kind]
-        note = (note or "").strip()
-        with self._lock:
-            data = self.get(uid)
-            for item in data[key]:
-                if str(item.get("id")) == str(item_id):
-                    if note:
-                        item["note"] = note
-                    else:
-                        item.pop("note", None)
-            self.save(uid, data)
-        return data
-
     def set_dir_label(self, uid, kind, item_id, where, label):
         key = KIND_KEYS[kind]
         where = (where or "").strip()

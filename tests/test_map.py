@@ -59,4 +59,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("translateY(100%)", css)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v6", _read("sw.js"))
+        self.assertIn("marshrut-v7", _read("sw.js"))

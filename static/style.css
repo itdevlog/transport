@@ -183,19 +183,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .stop-open a { color: var(--accent); }
 
-/* Mini note beside a favorite stop name (e.g. "в школу") — a plain label;
-   editing starts only from the pencil button. */
-.stop-note {
-  margin-left: 8px;
-  padding: 1px 8px;
-  border-radius: 999px;
-  background: #eef3f7;
-  color: var(--muted);
-  font-size: .78rem;
-  font-weight: 500;
-  vertical-align: middle;
-}
-
+/* Pencil used for direction labels. */
 .note-edit {
   border: none;
   background: none;
@@ -208,16 +196,6 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .note-edit:hover { color: var(--accent); }
 
-.note-input {
-  margin-top: 6px;
-  width: 100%;
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: .92rem;
-}
 .banner.info { background: var(--info-bg); color: var(--info-ink); }
 .banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .banner.error { background: var(--error-bg); color: var(--error-ink); }
