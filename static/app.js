@@ -918,6 +918,14 @@ async function renderMap(view, focusId) {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("error", () => {}); // тайлы могут не догрузиться — карта остаётся рабочей
 
+  // Событие "load" может наступить, пока мы ждём /api/stations (растровые
+  // тайлы OSM грузятся быстрее ответа API). Слушатель ставим сразу, иначе
+  // слои остановок и кнопка «Моё место» не появятся вовсе.
+  let styleLoaded = false;
+  map.on("load", () => {
+    styleLoaded = true;
+  });
+
   let selectedSource = null;
   let sheetOpen = false;
   let sheetMode = "half";
@@ -1173,8 +1181,8 @@ async function renderMap(view, focusId) {
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     });
   };
-  if (map.loaded()) onLoad();
-  else map.on("load", onLoad);
+  if (styleLoaded) onLoad();
+  else map.once("load", onLoad);
 
   applyPendingScroll();
 }

@@ -71,6 +71,16 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("GEO_ARROW_SVG", app)
         self.assertIn("geoButton.innerHTML", app)
 
+    def test_map_layers_survive_early_load_event(self):
+        app = _read("app.js")
+        # "load" может пройти, пока ждём /api/stations: слушатель ставится
+        # сразу после создания карты, а слои добавляются по флагу.
+        self.assertIn("let styleLoaded = false;", app)
+        self.assertIn('if (styleLoaded) onLoad();', app)
+        self.assertIn('map.once("load", onLoad);', app)
+        self.assertNotIn("map.loaded()", app)
+        self.assertLess(app.index('map.on("load"'), app.index("await loadMapStops()"))
+
     def test_stop_card_is_bottom_sheet(self):
         app = _read("app.js")
         self.assertIn("map-sheet", app)
@@ -103,4 +113,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("heading.textContent = stop.name", app)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v12", _read("sw.js"))
+        self.assertIn("marshrut-v13", _read("sw.js"))
