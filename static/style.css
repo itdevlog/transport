@@ -335,6 +335,12 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .route-chips.hidden { display: none; }
 
 /* Карта остановок */
+.map-wrap {
+  position: relative;
+  border-radius: 12px;
+  overflow: hidden;
+  margin-bottom: 10px;
+}
 .map {
   position: relative; /* свой stacking context: панели карты не перекрывают шапку */
   z-index: 0;
@@ -343,9 +349,76 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   border: 1px solid var(--line);
   border-radius: 12px;
   overflow: hidden;
-  margin-bottom: 10px;
 }
 .map .maplibregl-map { font: inherit; }
+
+/* Нижний лист с карточкой остановки: выезжает поверх карты. */
+.map-sheet {
+  position: absolute;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  height: 45vh;
+  max-height: 100%;
+  display: flex;
+  flex-direction: column;
+  background: var(--card);
+  border-top: 1px solid var(--line);
+  border-radius: 14px 14px 0 0;
+  box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
+  transform: translateY(100%);
+  transition: transform .22s ease;
+  will-change: transform;
+}
+.map-sheet.open { transform: translateY(0); }
+.map-sheet.hidden { display: none; }
+.map-sheet-head {
+  position: relative;
+  flex: 0 0 auto;
+  padding: 8px 44px 6px;
+  touch-action: none;
+  cursor: grab;
+}
+.map-sheet-grab {
+  display: block;
+  width: 40px;
+  height: 4px;
+  margin: 0 auto;
+  border-radius: 2px;
+  background: var(--line);
+}
+.map-sheet-close {
+  position: absolute;
+  right: 8px;
+  top: 4px;
+  width: 32px;
+  height: 32px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: .95rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-sheet-body {
+  flex: 1 1 auto;
+  overflow-y: auto;
+  overscroll-behavior: contain;
+  padding: 2px 12px 14px;
+  -webkit-overflow-scrolling: touch;
+}
+.map-sheet-body .map-stop { margin-top: 0; }
+.map-arrow { width: 26px; height: 26px; }
+.map-arrow svg {
+  display: block;
+  width: 100%;
+  height: 100%;
+  transform-box: fill-box;
+  transform-origin: 50% 50%;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+}
 .map-geo {
   position: absolute;
   right: 10px;

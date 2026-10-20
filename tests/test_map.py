@@ -40,6 +40,20 @@ class MapViewTest(unittest.TestCase):
         app = _read("app.js")
         self.assertIn("navigator.geolocation", app)
         self.assertIn("map-geo", app)
+        # Вместо точки — стрелка, повёрнутая по heading (если браузер его отдал).
+        self.assertIn("map-arrow", app)
+        self.assertIn("pos.coords.heading", app)
+        self.assertIn("accuracyCircle", app)
+
+    def test_stop_card_is_bottom_sheet(self):
+        app = _read("app.js")
+        self.assertIn("map-sheet", app)
+        self.assertIn("openSheet(", app)
+        self.assertIn("closeSheet()", app)
+        self.assertIn("queryRenderedFeatures", app)
+        css = _read("style.css")
+        self.assertIn(".map-sheet.open", css)
+        self.assertIn("translateY(100%)", css)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v4", _read("sw.js"))
+        self.assertIn("marshrut-v5", _read("sw.js"))

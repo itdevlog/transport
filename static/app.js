@@ -894,6 +894,11 @@ async function renderStop(view, sid) {
 const CITY_BOUNDS = [[60.35, 56.68], [60.85, 56.99]];
 const MAP_CENTER = [60.6057, 56.8389];
 const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
+// Стрелка «моё место»: поворачиваем внутренний svg, потому что transform самого
+// элемента занят MapLibre (он позиционирует маркер через translate).
+const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path d="M12 2 L19.5 21 L12 17.2 L4.5 21 Z" fill="#1565c0" stroke="#ffffff" ' +
+  'stroke-width="1.6" stroke-linejoin="round"/></svg>';
 
 let maplibrePromise = null;
 let mapStopsCache = null;
@@ -930,6 +935,24 @@ function loadMapStops() {
   });
 }
 
+// Круг точности геолокации: MapLibre не умеет радиус в метрах, поэтому
+// строим простой полигон вокруг точки (64 сегмента).
+function accuracyCircle(lng, lat, radiusM, steps) {
+  const count = steps || 64;
+  const ring = [];
+  const dLat = radiusM / 111320;
+  const dLng = radiusM / (111320 * Math.max(Math.cos(lat * Math.PI / 180), 0.01));
+  for (let i = 0; i <= count; i += 1) {
+    const angle = (i / count) * Math.PI * 2;
+    ring.push([lng + dLng * Math.cos(angle), lat + dLat * Math.sin(angle)]);
+  }
+  return {
+    type: "Feature",
+    properties: {},
+    geometry: { type: "Polygon", coordinates: [ring] },
+  };
+}
+
 function mapStopCard(st) {
   const card = el("div", { class: "card map-stop" });
   const head = el("div", { class: "row stop-head" });
@@ -954,10 +977,22 @@ async function renderMap(view) {
   const gen = routeGen;
   view.appendChild(el("h2", {}, ["Карта остановок"]));
   view.appendChild(el("div", { class: "sub" }, ["Нажмите на остановку, чтобы увидеть прогноз."]));
+  const wrap = el("div", { class: "map-wrap" });
   const mapBox = el("div", { class: "map" });
-  view.appendChild(mapBox);
-  const details = el("div");
-  view.appendChild(details);
+  wrap.appendChild(mapBox);
+  // Карточка остановки — нижний лист поверх карты: страницу скроллить не нужно.
+  const sheet = el("div", { class: "map-sheet hidden", role: "dialog", "aria-label": "Остановка" });
+  const sheetHead = el("div", { class: "map-sheet-head" });
+  sheetHead.appendChild(el("span", { class: "map-sheet-grab" }));
+  const sheetClose = el("button", {
+    class: "map-sheet-close", type: "button", title: "Закрыть", "aria-label": "Закрыть",
+  }, ["✕"]);
+  sheetHead.appendChild(sheetClose);
+  const sheetBody = el("div", { class: "map-sheet-body" });
+  sheet.appendChild(sheetHead);
+  sheet.appendChild(sheetBody);
+  wrap.appendChild(sheet);
+  view.appendChild(wrap);
 
   try {
     await loadMapLibre();
@@ -983,6 +1018,78 @@ async function renderMap(view) {
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("error", () => {}); // тайлы могут не догрузиться — карта остаётся рабочей
 
+  let selectedSource = null;
+  let sheetOpen = false;
+
+  function closeSheet() {
+    if (!sheetOpen) return;
+    sheetOpen = false;
+    sheet.classList.remove("open");
+    if (selectedSource) {
+      selectedSource.setData({ type: "FeatureCollection", features: [] });
+    }
+    window.setTimeout(() => {
+      if (!sheetOpen) {
+        sheet.classList.add("hidden");
+        sheetBody.innerHTML = "";
+      }
+    }, 230);
+  }
+
+  function openSheet(st, feature) {
+    if (selectedSource) {
+      selectedSource.setData({ type: "FeatureCollection", features: [feature] });
+    }
+    sheetBody.innerHTML = "";
+    sheetBody.appendChild(mapStopCard(st));
+    sheetBody.scrollTop = 0;
+    sheet.classList.remove("hidden");
+    sheetOpen = true;
+    requestAnimationFrame(() => sheet.classList.add("open"));
+    // Поднимаем точку над листом, чтобы маркер не спрятался за карточкой.
+    map.easeTo({
+      center: feature.geometry.coordinates,
+      padding: { bottom: sheet.offsetHeight || 0 },
+      duration: 350,
+    });
+  }
+
+  sheetClose.addEventListener("click", closeSheet);
+
+  // Свайп вниз за шапку листа.
+  let dragStartY = null;
+  let dragDy = 0;
+  sheetHead.addEventListener("pointerdown", (event) => {
+    if (event.target === sheetClose) return;
+    dragStartY = event.clientY;
+    dragDy = 0;
+    sheet.style.transition = "none";
+    if (sheetHead.setPointerCapture) sheetHead.setPointerCapture(event.pointerId);
+  });
+  sheetHead.addEventListener("pointermove", (event) => {
+    if (dragStartY === null) return;
+    dragDy = Math.max(0, event.clientY - dragStartY);
+    sheet.style.transform = "translateY(" + dragDy + "px)";
+  });
+  const endDrag = () => {
+    if (dragStartY === null) return;
+    dragStartY = null;
+    sheet.style.transition = "";
+    sheet.style.transform = "";
+    if (dragDy > 80) closeSheet();
+  };
+  sheetHead.addEventListener("pointerup", endDrag);
+  sheetHead.addEventListener("pointercancel", endDrag);
+
+  // Тап по пустому месту карты закрывает лист; тап по маркеру — открывает.
+  map.on("click", (event) => {
+    if (!sheetOpen) return;
+    const hits = map.getLayer("stops")
+      ? map.queryRenderedFeatures(event.point, { layers: ["stops"] })
+      : [];
+    if (!hits.length) closeSheet();
+  });
+
   let stops;
   try {
     stops = await loadMapStops();
@@ -1000,6 +1107,22 @@ async function renderMap(view) {
 
   const onLoad = () => {
     if (mapInstance !== map) return;
+    map.addSource("accuracy", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    map.addLayer({
+      id: "accuracy-fill",
+      type: "fill",
+      source: "accuracy",
+      paint: { "fill-color": "#1565c0", "fill-opacity": 0.12 },
+    });
+    map.addLayer({
+      id: "accuracy-line",
+      type: "line",
+      source: "accuracy",
+      paint: { "line-color": "#1565c0", "line-opacity": 0.45, "line-width": 1 },
+    });
     map.addSource("stops", {
       type: "geojson",
       data: { type: "FeatureCollection", features: features },
@@ -1039,13 +1162,8 @@ async function renderMap(view) {
       const id = String(feature.properties.id);
       const st = stops.find((s) => String(s.id) === id);
       if (!st) return;
-      const selected = map.getSource("selected-stop");
-      if (selected) {
-        selected.setData({ type: "FeatureCollection", features: [feature] });
-      }
-      details.innerHTML = "";
-      details.appendChild(mapStopCard(st));
-      details.scrollIntoView({ behavior: "smooth", block: "nearest" });
+      selectedSource = map.getSource("selected-stop");
+      openSheet(st, feature);
     });
     map.on("mousemove", "stops", () => {
       map.getCanvas().style.cursor = "pointer";
@@ -1070,9 +1188,26 @@ async function renderMap(view) {
         geoButton.disabled = false;
         const coords = [pos.coords.longitude, pos.coords.latitude];
         if (userMarker) userMarker.remove();
-        userMarker = new maplibregl.Marker({ color: "#1565c0" })
+        const arrow = el("div", { class: "map-arrow", title: "Моё место" });
+        arrow.innerHTML = ARROW_SVG;
+        // heading браузер отдаёт не всегда (на десктопе почти всегда null) —
+        // тогда стрелка смотрит вверх.
+        const svg = arrow.querySelector("svg");
+        if (svg) {
+          const heading = Number.isFinite(pos.coords.heading) ? pos.coords.heading : 0;
+          svg.style.transform = "rotate(" + heading + "deg)";
+        }
+        userMarker = new maplibregl.Marker({ element: arrow, anchor: "center" })
           .setLngLat(coords)
           .addTo(map);
+        const accuracy = map.getSource("accuracy");
+        if (accuracy) {
+          const radius = Number.isFinite(pos.coords.accuracy) ? pos.coords.accuracy : 0;
+          accuracy.setData({
+            type: "FeatureCollection",
+            features: radius > 0 ? [accuracyCircle(coords[0], coords[1], radius)] : [],
+          });
+        }
         map.flyTo({ center: coords, zoom: Math.max(map.getZoom(), 15) });
         if (Number.isFinite(pos.coords.accuracy)) {
           showBanner("Точность определения: ±" + Math.round(pos.coords.accuracy) + " м", "info");
