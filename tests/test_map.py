@@ -25,8 +25,18 @@ class MapLibreVendorTest(unittest.TestCase):
 
 
 class MapViewTest(unittest.TestCase):
-    def test_nav_has_map_link(self):
-        self.assertIn('href="#/map"', _read("index.html"))
+    def test_nav_is_icon_bar_with_map_home(self):
+        html = _read("index.html")
+        self.assertIn('href="#/"', html)
+        self.assertIn('href="#/favorites"', html)
+        self.assertIn('data-nav="map"', html)
+        self.assertIn("<svg", html)
+        self.assertIn('class="nav-label"', html)
+        app = _read("app.js")
+        # Карта — главный раздел, избранное переехало на #/favorites.
+        self.assertIn('if (parts[0] === "") return renderMap(view);', app)
+        self.assertIn('if (parts[0] === "favorites") return renderFavorites(view);', app)
+        self.assertIn("markNav(parts)", app)
 
     def test_app_uses_openfreemap_with_compact_attribution(self):
         app = _read("app.js")
@@ -54,9 +64,22 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("openSheet(", app)
         self.assertIn("closeSheet()", app)
         self.assertIn("queryRenderedFeatures", app)
+        # Лист живёт поверх окна и умеет разворачиваться почти на весь экран.
+        self.assertIn("applyMode(", app)
+        self.assertIn("fullHeight", app)
         css = _read("style.css")
         self.assertIn(".map-sheet.open", css)
         self.assertIn("translateY(100%)", css)
+        self.assertIn("position: fixed", css)
+        self.assertIn(".map-sheet.full", css)
+        self.assertIn("92vh", css)
+
+    def test_sheet_close_is_contrasting(self):
+        css = _read("style.css")
+        start = css.index(".map-sheet-close")
+        block = css[start:start + 400]
+        self.assertIn("background: var(--accent)", block)
+        self.assertIn("color: #fff", block)
 
     def test_stop_links_open_on_map(self):
         app = _read("app.js")
@@ -67,4 +90,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("heading.textContent = stop.name", app)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v8", _read("sw.js"))
+        self.assertIn("marshrut-v9", _read("sw.js"))

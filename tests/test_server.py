@@ -64,33 +64,6 @@ class FavoritesStoreTest(unittest.TestCase):
         store.remove("stop", 5830)
         self.assertEqual(store.load()["stops"], [])
 
-    def test_set_dir_label_persists(self):
-        store = server.FavoritesStore(self.path)
-        store.add("stop", {"id": 5830, "name": "X"})
-        store.set_dir_label("stop", 5830, "Академика Ландау", "в школу")
-        again = server.FavoritesStore(self.path).load()
-        self.assertEqual(again["stops"][0]["dirs"], {"Академика Ландау": "в школу"})
-
-    def test_set_dir_label_overwrites(self):
-        store = server.FavoritesStore(self.path)
-        store.add("stop", {"id": 5830, "name": "X"})
-        store.set_dir_label("stop", 5830, "A", "в школу")
-        store.set_dir_label("stop", 5830, "A", "домой")
-        self.assertEqual(store.load()["stops"][0]["dirs"], {"A": "домой"})
-
-    def test_set_dir_label_empty_removes_key(self):
-        store = server.FavoritesStore(self.path)
-        store.add("stop", {"id": 5830, "name": "X"})
-        store.set_dir_label("stop", 5830, "A", "в школу")
-        store.set_dir_label("stop", 5830, "A", "")
-        self.assertNotIn("dirs", store.load()["stops"][0])
-
-    def test_set_dir_label_unknown_id_is_noop(self):
-        store = server.FavoritesStore(self.path)
-        store.add("stop", {"id": 5830, "name": "X"})
-        store.set_dir_label("stop", 999, "A", "в школу")
-        self.assertNotIn("dirs", store.load()["stops"][0])
-
     def test_write_is_atomic(self):
         store = server.FavoritesStore(self.path)
         calls = []
@@ -289,43 +262,6 @@ class HandleApiTest(unittest.TestCase):
     def test_vehicle_requires_device_code(self):
         status, _ = self.call("/api/vehicle", {})
         self.assertEqual(status, 400)
-
-    def test_favorites_dir_set_and_read(self):
-        self.call("/api/favorites", method="POST",
-                  body={"action": "add", "kind": "stop", "id": 5830})
-        status, payload = self.call("/api/favorites", method="POST",
-                                    body={"action": "dir", "kind": "stop", "id": 5830,
-                                          "where": "Академика Ландау", "label": "в школу"})
-        self.assertEqual(status, 200)
-        self.assertEqual(payload["stops"][0]["dirs"], {"Академика Ландау": "в школу"})
-
-    def test_favorites_dir_without_where_is_400(self):
-        self.call("/api/favorites", method="POST",
-                  body={"action": "add", "kind": "stop", "id": 5830})
-        status, _ = self.call("/api/favorites", method="POST",
-                              body={"action": "dir", "kind": "stop", "id": 5830,
-                                    "label": "в школу"})
-        self.assertEqual(status, 400)
-
-    def test_favorites_dir_label_too_long_is_400(self):
-        self.call("/api/favorites", method="POST",
-                  body={"action": "add", "kind": "stop", "id": 5830})
-        status, _ = self.call("/api/favorites", method="POST",
-                              body={"action": "dir", "kind": "stop", "id": 5830,
-                                    "where": "A", "label": "x" * 61})
-        self.assertEqual(status, 400)
-
-    def test_favorites_dir_empty_clears(self):
-        self.call("/api/favorites", method="POST",
-                  body={"action": "add", "kind": "stop", "id": 5830})
-        self.call("/api/favorites", method="POST",
-                  body={"action": "dir", "kind": "stop", "id": 5830,
-                        "where": "A", "label": "в школу"})
-        status, payload = self.call("/api/favorites", method="POST",
-                                    body={"action": "dir", "kind": "stop", "id": 5830,
-                                          "where": "A", "label": ""})
-        self.assertEqual(status, 200)
-        self.assertNotIn("dirs", payload["stops"][0])
 
 
 class HttpServerTest(unittest.TestCase):

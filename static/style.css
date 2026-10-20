@@ -40,13 +40,47 @@ body {
 .topbar nav { display: flex; gap: 4px; flex-wrap: wrap; }
 
 .topbar nav a {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
   padding: 6px 10px;
   border-radius: 8px;
   color: var(--ink);
   text-decoration: none;
 }
 
+.topbar nav a svg { width: 18px; height: 18px; flex: 0 0 auto; }
+
 .topbar nav a:hover { background: var(--bg); }
+
+.topbar nav a[aria-current="page"] { color: var(--accent); background: var(--bg); }
+
+/* На телефоне меню уезжает вниз: четыре иконки без подписей. */
+@media (max-width: 640px) {
+  body { padding-bottom: 62px; }
+
+  .topbar nav {
+    position: fixed;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    z-index: 20;
+    gap: 0;
+    padding: 6px 4px calc(6px + env(safe-area-inset-bottom));
+    background: var(--card);
+    border-top: 1px solid var(--line);
+  }
+
+  .topbar nav a {
+    flex: 1 1 0;
+    justify-content: center;
+    padding: 8px 4px;
+    border-radius: 10px;
+  }
+
+  .topbar nav a svg { width: 22px; height: 22px; }
+  .topbar nav a .nav-label { display: none; }
+}
 
 #view { max-width: 900px; margin: 0 auto; padding: 16px; }
 
@@ -183,19 +217,6 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 .stop-open a { color: var(--accent); }
 
-/* Pencil used for direction labels. */
-.note-edit {
-  border: none;
-  background: none;
-  cursor: pointer;
-  font-size: 1rem;
-  line-height: 1;
-  padding: 4px 6px;
-  color: var(--muted);
-}
-
-.note-edit:hover { color: var(--accent); }
-
 .banner.info { background: var(--info-bg); color: var(--info-ink); }
 .banner.warn { background: var(--warn-bg); color: var(--warn-ink); }
 .banner.error { background: var(--error-bg); color: var(--error-ink); }
@@ -215,20 +236,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   color: var(--ink);
 }
 
-.dir-terminal { color: var(--muted); font-weight: 400; }
-
 .dir-row { margin-left: 14px; }
-
-.dir-input {
-  flex: 1 1 160px;
-  max-width: 220px;
-  padding: 6px 9px;
-  border: 1px solid var(--line);
-  border-radius: 8px;
-  background: var(--card);
-  color: var(--ink);
-  font-size: .95rem;
-}
 
 .type-dots {
   display: inline-flex;
@@ -332,13 +340,15 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 /* Нижний лист с карточкой остановки: выезжает поверх карты. */
 .map-sheet {
-  position: absolute;
+  position: fixed;
   left: 0;
   right: 0;
   bottom: 0;
-  z-index: 5;
+  z-index: 30;
+  width: 100%;
+  max-width: 900px;
+  margin: 0 auto;
   height: 45vh;
-  max-height: 100%;
   display: flex;
   flex-direction: column;
   background: var(--card);
@@ -346,10 +356,11 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   border-radius: 14px 14px 0 0;
   box-shadow: 0 -6px 24px rgba(0, 0, 0, .18);
   transform: translateY(100%);
-  transition: transform .22s ease;
-  will-change: transform;
+  transition: transform .22s ease, height .22s ease;
+  will-change: transform, height;
 }
 .map-sheet.open { transform: translateY(0); }
+.map-sheet.full { height: 92vh; }
 .map-sheet.hidden { display: none; }
 .map-sheet-head {
   position: relative;
@@ -373,10 +384,11 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   width: 32px;
   height: 32px;
   border-radius: 10px;
-  border: 1px solid var(--line);
-  background: var(--card);
-  color: var(--ink);
+  border: 1px solid var(--accent);
+  background: var(--accent);
+  color: #fff;
   font-size: .95rem;
+  font-weight: 600;
   line-height: 1;
   cursor: pointer;
 }

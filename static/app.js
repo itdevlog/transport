@@ -174,7 +174,7 @@ function enqueueStar(kind, id, name) {
 
 /* ---------- forecast rendering ---------- */
 
-function renderForecastList(container, forecasts, stop) {
+function renderForecastList(container, forecasts) {
   container.innerHTML = "";
   const items = (forecasts || []).slice().sort((a, b) => {
     const av = typeof a.arrivalTimeInSec === "number" ? a.arrivalTimeInSec : Infinity;
@@ -192,84 +192,14 @@ function renderForecastList(container, forecasts, stop) {
     groups.get(where).push(f);
   });
   groups.forEach((arrivals, where) => {
-    container.appendChild(renderDirGroup(where, arrivals, stop));
+    container.appendChild(renderDirGroup(where, arrivals));
   });
 }
 
-function renderDirGroup(where, arrivals, stop) {
+function renderDirGroup(where, arrivals) {
   const group = el("div", { class: "dir-group" });
   const head = el("div", { class: "dir-head" });
-  const labelEl = el("span", { class: "dir-label" });
-  const terminalEl = el("span", { class: "dir-terminal" });
-  head.appendChild(labelEl);
-  head.appendChild(terminalEl);
-
-  function paint() {
-    const custom = (stop && stop.dirs && stop.dirs[where]) || "";
-    labelEl.textContent = custom || ("до " + where);
-    terminalEl.textContent = custom ? "(до " + where + ")" : "";
-  }
-
-  if (stop) {
-    const input = el("input", {
-      class: "dir-input hidden", type: "text", maxlength: "60",
-      placeholder: "подпись направления", "aria-label": "Подпись направления",
-    });
-    const pencil = el("button", { class: "note-edit", title: "Подпись направления",
-      "aria-label": "Подпись направления" }, ["✎"]);
-    head.appendChild(input);
-    head.appendChild(pencil);
-    let busy = false;
-
-    function showLabel() {
-      input.classList.add("hidden");
-      pencil.classList.remove("hidden");
-      labelEl.classList.remove("hidden");
-      terminalEl.classList.remove("hidden");
-      paint();
-    }
-    function startEdit(event) {
-      event.preventDefault();
-      event.stopPropagation();
-      input.value = (stop.dirs && stop.dirs[where]) || "";
-      input.classList.remove("hidden");
-      pencil.classList.add("hidden");
-      labelEl.classList.add("hidden");
-      terminalEl.classList.add("hidden");
-      input.focus();
-      input.select();
-    }
-    async function commit() {
-      if (busy) return;
-      busy = true;
-      try {
-        const data = await api("/api/favorites", {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ action: "dir", kind: "stop", id: stop.id, where: where, label: input.value }),
-        });
-        favorites = { routes: data.routes || [], stops: data.stops || [] };
-        const fresh = favorites.stops.find((x) => String(x.id) === String(stop.id));
-        stop.dirs = (fresh && fresh.dirs) || {};
-        showLabel();
-      } catch (err) {
-        showBanner("Подпись: " + err.message, "error");
-        showLabel();
-      } finally {
-        busy = false;
-      }
-    }
-    pencil.addEventListener("click", startEdit);
-    input.addEventListener("click", (event) => event.stopPropagation());
-    input.addEventListener("keydown", (event) => {
-      event.stopPropagation();
-      if (event.key === "Enter") { event.preventDefault(); commit(); input.blur(); }
-      else if (event.key === "Escape") { event.preventDefault(); showLabel(); }
-    });
-    input.addEventListener("blur", () => { if (!input.classList.contains("hidden")) commit(); });
-  }
-
-  paint();
+  head.appendChild(el("span", { class: "dir-label" }, ["до " + where]));
   group.appendChild(head);
 
   arrivals.forEach((f) => {
@@ -376,11 +306,11 @@ function forecastPanel(sid, stop) {
       last = data.forecasts || [];
       lastAt = new Date();
       lastError = null;
-      renderForecastList(list, last, stop);
+      renderForecastList(list, last);
     } catch (err) {
       lastError = err;
       if (last) {
-        renderForecastList(list, last, stop);
+        renderForecastList(list, last);
       } else {
         list.innerHTML = "";
         list.appendChild(el("div", { class: "empty muted" }, ["Прогноз недоступен: " + err.message]));
@@ -977,6 +907,16 @@ async function renderMap(view, focusId) {
 
   let selectedSource = null;
   let sheetOpen = false;
+  let sheetMode = "half";
+
+  const halfHeight = () => Math.round(window.innerHeight * 0.45);
+  const fullHeight = () => Math.round(window.innerHeight * 0.92);
+
+  function applyMode(mode) {
+    sheetMode = mode;
+    sheet.classList.toggle("full", mode === "full");
+    sheet.style.height = (mode === "full" ? fullHeight() : halfHeight()) + "px";
+  }
 
   function closeSheet() {
     if (!sheetOpen) return;
@@ -1001,42 +941,68 @@ async function renderMap(view, focusId) {
     sheetBody.appendChild(mapStopCard(st));
     sheetBody.scrollTop = 0;
     sheet.classList.remove("hidden");
+    applyMode("half");
     sheetOpen = true;
     requestAnimationFrame(() => sheet.classList.add("open"));
     // Поднимаем точку над листом, чтобы маркер не спрятался за карточкой.
     map.easeTo({
       center: feature.geometry.coordinates,
-      padding: { bottom: sheet.offsetHeight || 0 },
+      padding: { bottom: Math.min(sheet.offsetHeight, Math.max(40, mapBox.offsetHeight - 80)) },
       duration: 350,
     });
   }
 
   sheetClose.addEventListener("click", closeSheet);
 
-  // Свайп вниз за шапку листа.
-  let dragStartY = null;
-  let dragDy = 0;
+  // Лист тянется за шапку: половина (45vh) ↔ почти весь экран (92vh).
+  let pointerActive = false;
+  let dragStartY = 0;
+  let dragStartH = 0;
+  let dragHeight = 0;
+  let dragMoved = false;
+
   sheetHead.addEventListener("pointerdown", (event) => {
     if (event.target === sheetClose) return;
+    pointerActive = true;
+    dragMoved = false;
     dragStartY = event.clientY;
-    dragDy = 0;
+    dragStartH = sheet.offsetHeight;
+    dragHeight = dragStartH;
     sheet.style.transition = "none";
     if (sheetHead.setPointerCapture) sheetHead.setPointerCapture(event.pointerId);
   });
+
   sheetHead.addEventListener("pointermove", (event) => {
-    if (dragStartY === null) return;
-    dragDy = Math.max(0, event.clientY - dragStartY);
-    sheet.style.transform = "translateY(" + dragDy + "px)";
+    if (!pointerActive) return;
+    const dy = dragStartY - event.clientY; // вверх — увеличиваем высоту
+    if (Math.abs(dy) > 6) dragMoved = true;
+    const min = Math.round(window.innerHeight * 0.25);
+    dragHeight = Math.max(min, Math.min(fullHeight(), dragStartH + dy));
+    sheet.style.height = dragHeight + "px";
   });
+
   const endDrag = () => {
-    if (dragStartY === null) return;
-    dragStartY = null;
+    if (!pointerActive) return;
+    pointerActive = false;
     sheet.style.transition = "";
-    sheet.style.transform = "";
-    if (dragDy > 80) closeSheet();
+    if (!dragMoved) {
+      // Короткий тап по шапке: развернуть / свернуть.
+      applyMode(sheetMode === "full" ? "half" : "full");
+      return;
+    }
+    if (dragHeight < window.innerHeight * 0.3) {
+      closeSheet();
+      return;
+    }
+    applyMode(dragHeight > (halfHeight() + fullHeight()) / 2 ? "full" : "half");
   };
+
   sheetHead.addEventListener("pointerup", endDrag);
   sheetHead.addEventListener("pointercancel", endDrag);
+
+  window.addEventListener("resize", () => {
+    if (mapInstance === map && sheetOpen) applyMode(sheetMode);
+  });
 
   // Тап по пустому месту карты закрывает лист; тап по маркеру — открывает.
   map.on("click", (event) => {
@@ -1216,6 +1182,25 @@ function applyPendingScroll() {
   window.scrollTo(0, y);
 }
 
+// Какой пункт нижнего меню подсветить для текущего раздела.
+const NAV_SECTION = {
+  "": "map",
+  map: "map",
+  favorites: "favorites",
+  routes: "routes",
+  route: "routes",
+  stops: "stops",
+  stop: "stops",
+};
+
+function markNav(parts) {
+  const active = NAV_SECTION[parts[0] || ""] || "";
+  document.querySelectorAll(".topbar nav a[data-nav]").forEach((link) => {
+    if (link.dataset.nav === active) link.setAttribute("aria-current", "page");
+    else link.removeAttribute("aria-current");
+  });
+}
+
 async function route() {
   stopRefresh();
   routeGen += 1;
@@ -1231,7 +1216,9 @@ async function route() {
   }
   view.innerHTML = "";
   const parts = hash.replace(/^#\/?/, "").split("/");
-  if (parts[0] === "") return renderFavorites(view);
+  markNav(parts);
+  if (parts[0] === "") return renderMap(view);
+  if (parts[0] === "favorites") return renderFavorites(view);
   if (parts[0] === "routes") return renderRoutes(view);
   if (parts[0] === "route") return renderRoute(view, parts[1]);
   if (parts[0] === "stops") return renderStops(view);

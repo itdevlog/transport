@@ -108,23 +108,3 @@ class ProfilesStore:
             ]
             self.save(uid, data)
         return data
-
-    def set_dir_label(self, uid, kind, item_id, where, label):
-        key = KIND_KEYS[kind]
-        where = (where or "").strip()
-        label = (label or "").strip()
-        with self._lock:
-            data = self.get(uid)
-            for item in data[key]:
-                if str(item.get("id")) == str(item_id):
-                    dirs = item.get("dirs") or {}
-                    if label:
-                        dirs[where] = label
-                    else:
-                        dirs.pop(where, None)
-                    if dirs:
-                        item["dirs"] = dirs
-                    else:
-                        item.pop("dirs", None)
-            self.save(uid, data)
-        return data

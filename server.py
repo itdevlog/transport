@@ -21,7 +21,6 @@ mimetypes.add_type("application/manifest+json", ".webmanifest")
 
 
 KIND_KEYS = {"route": "routes", "stop": "stops"}
-MAX_NOTE_LEN = 60
 
 
 class FavoritesStore:
@@ -65,27 +64,6 @@ class FavoritesStore:
             self._write(data)
             return data
 
-    def set_dir_label(self, kind, item_id, where, label):
-        key = KIND_KEYS[kind]
-        where = (where or "").strip()
-        label = (label or "").strip()
-        with self._lock:
-            data = self._read()
-            for item in data[key]:
-                if str(item.get("id")) == str(item_id):
-                    dirs = item.get("dirs") or {}
-                    if label:
-                        dirs[where] = label
-                        item["dirs"] = dirs
-                    else:
-                        dirs.pop(where, None)
-                        if dirs:
-                            item["dirs"] = dirs
-                        else:
-                            item.pop("dirs", None)
-            self._write(data)
-            return data
-
     def _write(self, data):
         directory = os.path.dirname(os.path.abspath(self._path)) or "."
         fd, tmp = tempfile.mkstemp(dir=directory, prefix=".favorites-", suffix=".tmp")
@@ -116,9 +94,6 @@ class _LegacyFavorites:
 
     def remove(self, uid, kind, item_id):
         return self._store.remove(kind, item_id)
-
-    def set_dir_label(self, uid, kind, item_id, where, label):
-        return self._store.set_dir_label(kind, item_id, where, label)
 
 
 def _maybe_migrate(profiles, store, uid):
@@ -313,23 +288,11 @@ def handle_api(path, params, method, body, portal, store, catalog=None,
                 return 200, backend.get(uid)
             body = body or {}
             action, kind = body.get("action"), body.get("kind")
-            if kind not in KIND_KEYS or action not in ("add", "remove", "dir"):
+            if kind not in KIND_KEYS or action not in ("add", "remove"):
                 return 400, {"error": {"reason": "bad_param", "message": "action/kind"}}
             if action == "add":
                 name = body.get("name") or _resolve_name(portal, kind, body.get("id"))
                 return 200, backend.add(uid, kind, {"id": body.get("id"), "name": name})
-            if action == "dir":
-                if body.get("id") is None:
-                    return 400, {"error": {"reason": "bad_param", "message": "id required"}}
-                where = body.get("where")
-                label = body.get("label")
-                if label is None:
-                    label = ""
-                if not isinstance(where, str) or not where.strip():
-                    return 400, {"error": {"reason": "bad_param", "message": "where required"}}
-                if not isinstance(label, str) or len(label.strip()) > MAX_NOTE_LEN:
-                    return 400, {"error": {"reason": "bad_param", "message": "label too long"}}
-                return 200, backend.set_dir_label(uid, kind, body.get("id"), where, label)
             return 200, backend.remove(uid, kind, body.get("id"))
 
         return 404, {"error": {"reason": "not_found", "message": path}}

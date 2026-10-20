@@ -1,7 +1,7 @@
 "use strict";
 
 // Кэш «оболочки» приложения. Прогнозы и прочие /api/* — только сеть.
-const CACHE = "marshrut-v8";
+const CACHE = "marshrut-v9";
 const ASSETS = [
   "/",
   "/index.html",

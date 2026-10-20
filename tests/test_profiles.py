@@ -72,14 +72,6 @@ class ProfilesMutationTest(unittest.TestCase):
         self.store.remove(self.uid, "stop", 5830)
         self.assertEqual(self.store.get(self.uid)["stops"], [])
 
-    def test_set_dir_label_and_clear(self):
-        self.store.add(self.uid, "stop", {"id": 5830, "name": "A"})
-        self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "домой")
-        self.assertEqual(self.store.get(self.uid)["stops"][0]["dirs"],
-                         {"Академика Ландау": "домой"})
-        self.store.set_dir_label(self.uid, "stop", 5830, "Академика Ландау", "")
-        self.assertNotIn("dirs", self.store.get(self.uid)["stops"][0])
-
     def test_concurrent_adds_do_not_lose_updates(self):
         def worker(i):
             self.store.add(self.uid, "stop", {"id": 1000 + i, "name": "s%d" % i})

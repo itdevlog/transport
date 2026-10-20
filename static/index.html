@@ -17,10 +17,22 @@
   <header class="topbar">
     <span class="brand">Маршрут</span>
     <nav>
-      <a href="#/">Избранное</a>
-      <a href="#/routes">Маршруты</a>
-      <a href="#/stops">Остановки</a>
-      <a href="#/map">Карта</a>
+      <a href="#/" data-nav="map" aria-label="Карта" title="Карта">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 21s7-6.1 7-11a7 7 0 1 0-14 0c0 4.9 7 11 7 11z"/><circle cx="12" cy="10" r="2.5"/></svg>
+        <span class="nav-label">Карта</span>
+      </a>
+      <a href="#/favorites" data-nav="favorites" aria-label="Избранное" title="Избранное">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M12 3.5l2.6 5.3 5.9.9-4.3 4.1 1 5.8-5.2-2.7-5.2 2.7 1-5.8L3.5 9.7l5.9-.9z"/></svg>
+        <span class="nav-label">Избранное</span>
+      </a>
+      <a href="#/routes" data-nav="routes" aria-label="Маршруты" title="Маршруты">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><rect x="4" y="4" width="16" height="13" rx="3"/><path d="M4 11h16M8 20v-3M16 20v-3"/><circle cx="8" cy="14" r="1"/><circle cx="16" cy="14" r="1"/></svg>
+        <span class="nav-label">Маршруты</span>
+      </a>
+      <a href="#/stops" data-nav="stops" aria-label="Остановки" title="Остановки">
+        <svg viewBox="0 0 24 24" aria-hidden="true" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="11" cy="11" r="6"/><path d="M16 16l4 4"/></svg>
+        <span class="nav-label">Остановки</span>
+      </a>
     </nav>
   </header>
   <div id="banner" class="banner hidden" role="status"></div>
