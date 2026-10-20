@@ -899,6 +899,9 @@ const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
   '<path d="M12 2 L19.5 21 L12 17.2 L4.5 21 Z" fill="#1565c0" stroke="#ffffff" ' +
   'stroke-width="1.6" stroke-linejoin="round"/></svg>';
+// Иконка кнопки «Моё место» — стрелка-навигатор (как в картах).
+const GEO_ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path d="M21 3 L3 10.6 L10.3 13.7 L13.4 21 Z" fill="currentColor"/></svg>';
 
 let maplibrePromise = null;
 let mapStopsCache = null;
@@ -1175,7 +1178,8 @@ async function renderMap(view) {
     // «Моё место»: координаты считает браузер, на сервер они не уходят.
     const geoButton = el("button", {
       class: "map-geo", type: "button", title: "Моё место", "aria-label": "Моё место",
-    }, ["◎"]);
+    });
+    geoButton.innerHTML = GEO_ARROW_SVG;
     mapBox.appendChild(geoButton);
     let userMarker = null;
     geoButton.addEventListener("click", () => {

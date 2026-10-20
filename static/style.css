@@ -424,16 +424,21 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   right: 10px;
   bottom: 34px;
   z-index: 2;
+  display: flex;
+  align-items: center;
+  justify-content: center;
   width: 36px;
   height: 36px;
+  padding: 0;
   border-radius: 10px;
   border: 1px solid var(--line);
   background: var(--card);
-  color: var(--ink);
+  color: var(--accent);
   font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
 }
+.map-geo svg { display: block; width: 20px; height: 20px; }
 .map-geo:disabled { opacity: .5; cursor: default; }
 .map-stop { margin-top: 10px; }
 

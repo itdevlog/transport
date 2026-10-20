@@ -44,6 +44,9 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("map-arrow", app)
         self.assertIn("pos.coords.heading", app)
         self.assertIn("accuracyCircle", app)
+        # Кнопка «Моё место» — стрелка-навигатор, а не кружок.
+        self.assertIn("GEO_ARROW_SVG", app)
+        self.assertIn("geoButton.innerHTML", app)
 
     def test_stop_card_is_bottom_sheet(self):
         app = _read("app.js")
@@ -56,4 +59,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("translateY(100%)", css)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v5", _read("sw.js"))
+        self.assertIn("marshrut-v6", _read("sw.js"))
