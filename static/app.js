@@ -887,37 +887,36 @@ async function renderStop(view, sid) {
   refreshTimer = setInterval(refresh, FORECAST_REFRESH_MS);
 }
 
-/* ---------- карта остановок ---------- */
+/* ---------- карта остановок (MapLibre + OpenFreeMap) ---------- */
 
-// Город ограничиваем прямоугольником, чтобы карту нельзя было утащить
-// в бесконечность: только Екатеринбург и ближние окраины.
-const CITY_BOUNDS = [[56.68, 60.35], [56.99, 60.85]];
-const MAP_CENTER = [56.8389, 60.6057];
-const OSM_ATTRIBUTION =
-  '&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a> contributors';
+// MapLibre ждёт координаты в порядке [долгота, широта].
+// Прямоугольник ограничивает карту Екатеринбургом и ближними окраинами.
+const CITY_BOUNDS = [[60.35, 56.68], [60.85, 56.99]];
+const MAP_CENTER = [60.6057, 56.8389];
+const MAP_STYLE = "https://tiles.openfreemap.org/styles/liberty";
 
-let leafletPromise = null;
+let maplibrePromise = null;
 let mapStopsCache = null;
 let mapInstance = null;
 
-// Leaflet грузим только при первом открытии карты: остальным разделам
-// его ~150 КБ не нужны.
-function loadLeaflet() {
-  if (window.L) return Promise.resolve();
-  if (leafletPromise) return leafletPromise;
-  leafletPromise = new Promise((resolve, reject) => {
+// MapLibre грузим только при первом открытии карты: остальным разделам
+// его ~1 МБ (≈270 КБ gzip) не нужен.
+function loadMapLibre() {
+  if (window.maplibregl) return Promise.resolve();
+  if (maplibrePromise) return maplibrePromise;
+  maplibrePromise = new Promise((resolve, reject) => {
     document.head.appendChild(el("link", {
-      rel: "stylesheet", href: "vendor/leaflet/leaflet.css",
+      rel: "stylesheet", href: "vendor/maplibre/maplibre-gl.css",
     }));
-    const script = el("script", { src: "vendor/leaflet/leaflet.js" });
+    const script = el("script", { src: "vendor/maplibre/maplibre-gl.js" });
     script.onload = () => resolve();
     script.onerror = () => {
-      leafletPromise = null;
-      reject(new Error("leaflet"));
+      maplibrePromise = null;
+      reject(new Error("maplibre"));
     };
     document.head.appendChild(script);
   });
-  return leafletPromise;
+  return maplibrePromise;
 }
 
 // Все остановки города одним запросом (~36 КБ gzip) и держим в памяти:
@@ -961,26 +960,28 @@ async function renderMap(view) {
   view.appendChild(details);
 
   try {
-    await loadLeaflet();
+    await loadMapLibre();
   } catch (err) {
     mapBox.appendChild(el("div", { class: "empty" }, ["Не удалось загрузить библиотеку карты."]));
     return;
   }
   if (gen !== routeGen) return;
 
-  const map = L.map(mapBox, {
+  const map = new maplibregl.Map({
+    container: mapBox,
+    style: MAP_STYLE,
     center: MAP_CENTER,
     zoom: 12,
     minZoom: 11,
     maxZoom: 17,
     maxBounds: CITY_BOUNDS,
-    maxBoundsViscosity: 1.0,
+    attributionControl: false,
   });
   mapInstance = map;
-  L.tileLayer("https://tile.openstreetmap.org/{z}/{x}/{y}.png", {
-    maxZoom: 17,
-    attribution: OSM_ATTRIBUTION,
-  }).addTo(map);
+  // Постоянной плашки нет: атрибуция свёрнута в кнопку «i».
+  map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-right");
+  map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
+  map.on("error", () => {}); // тайлы могут не догрузиться — карта остаётся рабочей
 
   let stops;
   try {
@@ -991,26 +992,103 @@ async function renderMap(view) {
   }
   if (gen !== routeGen || mapInstance !== map) return;
 
-  const renderer = L.canvas({ padding: 0.4 });
-  const base = {
-    radius: 5, weight: 1, color: "#c8102e", fillColor: "#c8102e", fillOpacity: 0.7,
-  };
-  const active = { color: "#1565c0", fillColor: "#1565c0", fillOpacity: 0.95, weight: 3 };
-  let selected = null;
-  stops.forEach((st) => {
-    const marker = L.circleMarker([st.lat, st.lng], Object.assign({ renderer: renderer }, base));
-    marker.bindTooltip(st.name || "", { direction: "top" });
-    marker.on("click", () => {
-      if (selected) selected.setStyle(base);
-      selected = marker;
-      marker.setStyle(active);
+  const features = stops.map((st) => ({
+    type: "Feature",
+    geometry: { type: "Point", coordinates: [st.lng, st.lat] },
+    properties: { id: st.id, name: st.name || "" },
+  }));
+
+  const onLoad = () => {
+    if (mapInstance !== map) return;
+    map.addSource("stops", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: features },
+    });
+    map.addLayer({
+      id: "stops",
+      type: "circle",
+      source: "stops",
+      paint: {
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 3, 16, 7],
+        "circle-color": "#c8102e",
+        "circle-opacity": 0.7,
+        "circle-stroke-width": 1,
+        "circle-stroke-color": "#ffffff",
+      },
+    });
+    map.addSource("selected-stop", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    map.addLayer({
+      id: "selected-stop",
+      type: "circle",
+      source: "selected-stop",
+      paint: {
+        "circle-radius": 9,
+        "circle-color": "#1565c0",
+        "circle-opacity": 0.95,
+        "circle-stroke-width": 2,
+        "circle-stroke-color": "#ffffff",
+      },
+    });
+
+    map.on("click", "stops", (event) => {
+      const feature = event.features && event.features[0];
+      if (!feature) return;
+      const id = String(feature.properties.id);
+      const st = stops.find((s) => String(s.id) === id);
+      if (!st) return;
+      const selected = map.getSource("selected-stop");
+      if (selected) {
+        selected.setData({ type: "FeatureCollection", features: [feature] });
+      }
       details.innerHTML = "";
       details.appendChild(mapStopCard(st));
+      details.scrollIntoView({ behavior: "smooth", block: "nearest" });
     });
-    marker.addTo(map);
-  });
+    map.on("mousemove", "stops", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "stops", () => {
+      map.getCanvas().style.cursor = "";
+    });
 
-  map.invalidateSize();
+    // «Моё место»: координаты считает браузер, на сервер они не уходят.
+    const geoButton = el("button", {
+      class: "map-geo", type: "button", title: "Моё место", "aria-label": "Моё место",
+    }, ["◎"]);
+    mapBox.appendChild(geoButton);
+    let userMarker = null;
+    geoButton.addEventListener("click", () => {
+      if (!navigator.geolocation) {
+        showBanner("Браузер не умеет определять местоположение.", "error");
+        return;
+      }
+      geoButton.disabled = true;
+      navigator.geolocation.getCurrentPosition((pos) => {
+        geoButton.disabled = false;
+        const coords = [pos.coords.longitude, pos.coords.latitude];
+        if (userMarker) userMarker.remove();
+        userMarker = new maplibregl.Marker({ color: "#1565c0" })
+          .setLngLat(coords)
+          .addTo(map);
+        map.flyTo({ center: coords, zoom: Math.max(map.getZoom(), 15) });
+        if (Number.isFinite(pos.coords.accuracy)) {
+          showBanner("Точность определения: ±" + Math.round(pos.coords.accuracy) + " м", "info");
+        }
+      }, (err) => {
+        geoButton.disabled = false;
+        const why = err && err.code === 1
+          ? "доступ к геолокации запрещён"
+          : (err && err.message ? err.message : "неизвестная ошибка");
+        showBanner("Не удалось определить местоположение: " + why, "error");
+      }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
+    });
+  };
+  if (map.loaded()) onLoad();
+  else map.on("load", onLoad);
+
   applyPendingScroll();
 }
 

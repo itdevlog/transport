@@ -336,7 +336,7 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 
 /* Карта остановок */
 .map {
-  position: relative; /* свой stacking context: панели Leaflet не перекрывают шапку */
+  position: relative; /* свой stacking context: панели карты не перекрывают шапку */
   z-index: 0;
   height: 62vh;
   min-height: 320px;
@@ -345,7 +345,23 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   overflow: hidden;
   margin-bottom: 10px;
 }
-.map .leaflet-container { font: inherit; background: var(--bg); }
+.map .maplibregl-map { font: inherit; }
+.map-geo {
+  position: absolute;
+  right: 10px;
+  bottom: 34px;
+  z-index: 2;
+  width: 36px;
+  height: 36px;
+  border-radius: 10px;
+  border: 1px solid var(--line);
+  background: var(--card);
+  color: var(--ink);
+  font-size: 1.1rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.map-geo:disabled { opacity: .5; cursor: default; }
 .map-stop { margin-top: 10px; }
 
 @media (min-width: 720px) {
