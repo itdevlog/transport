@@ -112,5 +112,18 @@ class MapViewTest(unittest.TestCase):
         # Страница остановки берёт настоящее название, а не id.
         self.assertIn("heading.textContent = stop.name", app)
 
+    def test_map_fills_the_screen(self):
+        app = _read("app.js")
+        css = _read("style.css")
+        # Карта — во весь экран между шапкой и нижним меню, без скролла страницы.
+        self.assertIn('view.classList.toggle("view-map", isMap)', app)
+        self.assertIn('document.body.classList.toggle("map-mode", isMap)', app)
+        self.assertIn("syncMapChrome", app)
+        self.assertIn("map-hint", app)
+        self.assertIn("body.map-mode", css)
+        self.assertIn("#view.view-map", css)
+        self.assertIn("100dvh", css)
+        self.assertIn("--topbar-h", css)
+
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v13", _read("sw.js"))
+        self.assertIn("marshrut-v14", _read("sw.js"))

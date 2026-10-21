@@ -58,6 +58,7 @@ body {
 /* На телефоне меню уезжает вниз: четыре иконки без подписей. */
 @media (max-width: 640px) {
   body { padding-bottom: 62px; }
+  body.map-mode { padding-bottom: 0; }
 
   .topbar nav {
     position: fixed;
@@ -337,6 +338,29 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
   overflow: hidden;
 }
 .map .maplibregl-map { font: inherit; }
+
+/* Карта — на весь экран между шапкой и нижним меню: страница не скроллится. */
+body.map-mode { overflow: hidden; }
+#view.view-map { max-width: none; margin: 0; padding: 0; }
+#view.view-map .map-wrap {
+  height: calc(100dvh - var(--topbar-h, 48px) - var(--nav-h, 0px));
+  margin: 0;
+  border-radius: 0;
+}
+#view.view-map .map { height: 100%; min-height: 0; border: 0; border-radius: 0; }
+.map-hint {
+  position: absolute;
+  left: 10px;
+  top: 10px;
+  z-index: 2;
+  padding: 5px 10px;
+  border-radius: 999px;
+  background: rgba(255, 255, 255, .92);
+  border: 1px solid var(--line);
+  color: var(--muted);
+  font-size: .82rem;
+  pointer-events: none;
+}
 
 /* Нижний лист с карточкой остановки: выезжает поверх карты. */
 .map-sheet {

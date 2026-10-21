@@ -872,13 +872,26 @@ function mapStopCard(st) {
   return card;
 }
 
+// Высота шапки и нижнего меню зависит от шрифта и safe-area — меряем фактически,
+// чтобы карта занимала ровно остаток экрана.
+function syncMapChrome() {
+  const topbar = document.querySelector(".topbar");
+  const nav = document.querySelector(".topbar nav");
+  const top = topbar ? topbar.offsetHeight : 0;
+  const navH = nav && getComputedStyle(nav).position === "fixed" ? nav.offsetHeight : 0;
+  document.documentElement.style.setProperty("--topbar-h", top + "px");
+  document.documentElement.style.setProperty("--nav-h", navH + "px");
+}
+
 async function renderMap(view, focusId) {
   const gen = routeGen;
-  view.appendChild(el("h2", {}, ["Карта остановок"]));
-  view.appendChild(el("div", { class: "sub" }, ["Нажмите на остановку, чтобы увидеть прогноз."]));
+  syncMapChrome();
   const wrap = el("div", { class: "map-wrap" });
   const mapBox = el("div", { class: "map" });
   wrap.appendChild(mapBox);
+  // Подсказка плавает поверх карты и исчезает после первого открытия карточки.
+  const hint = el("div", { class: "map-hint" }, ["Нажмите на остановку"]);
+  wrap.appendChild(hint);
   // Карточка остановки — нижний лист поверх карты: страницу скроллить не нужно.
   const sheet = el("div", { class: "map-sheet hidden", role: "dialog", "aria-label": "Остановка" });
   const sheetHead = el("div", { class: "map-sheet-head" });
@@ -955,6 +968,7 @@ async function renderMap(view, focusId) {
   }
 
   function openSheet(st, feature) {
+    hint.classList.add("hidden");
     if (selectedSource) {
       selectedSource.setData({ type: "FeatureCollection", features: [feature] });
     }
@@ -1022,6 +1036,7 @@ async function renderMap(view, focusId) {
   sheetHead.addEventListener("pointercancel", endDrag);
 
   window.addEventListener("resize", () => {
+    syncMapChrome();
     if (mapInstance === map && sheetOpen) applyMode(sheetMode);
   });
 
@@ -1076,7 +1091,7 @@ async function renderMap(view, focusId) {
       type: "circle",
       source: "stops",
       paint: {
-        "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 3, 16, 7],
+        "circle-radius": ["interpolate", ["linear"], ["zoom"], 11, 4, 16, 9],
         "circle-color": "#c8102e",
         "circle-opacity": 0.7,
         "circle-stroke-width": 1,
@@ -1235,8 +1250,12 @@ async function route() {
     mapInstance.remove();
     mapInstance = null;
   }
-  view.innerHTML = "";
   const parts = hash.replace(/^#\/?/, "").split("/");
+  // Карта — во весь экран: у раздела нет отступов и прокрутки страницы.
+  const isMap = parts[0] === "" || parts[0] === "map";
+  view.classList.toggle("view-map", isMap);
+  document.body.classList.toggle("map-mode", isMap);
+  view.innerHTML = "";
   markNav(parts);
   if (parts[0] === "") return renderMap(view);
   if (parts[0] === "favorites") return renderFavorites(view);
