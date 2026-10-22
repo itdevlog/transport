@@ -107,7 +107,7 @@ class MapViewTest(unittest.TestCase):
     def test_stop_links_open_on_map(self):
         app = _read("app.js")
         self.assertIn('"#/map/"', app)
-        self.assertIn("renderMap(view, focusId)", app)
+        self.assertIn("renderMap(view, focusId, routeId)", app)
         self.assertIn("/api/stop?sid=", app)
         # Страница остановки берёт настоящее название, а не id.
         self.assertIn("heading.textContent = stop.name", app)
@@ -125,5 +125,21 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("100dvh", css)
         self.assertIn("--topbar-h", css)
 
+    def test_live_vehicles_for_route_and_stop(self):
+        app = _read("app.js")
+        css = _read("style.css")
+        # Линия маршрута, остановки на ней и борта-стрелки с обновлением.
+        self.assertIn("/api/route-vehicles?routeId=", app)
+        self.assertIn("/api/stop-vehicles?sid=", app)
+        self.assertIn('"route-line"', app)
+        self.assertIn('"vehicle-arrow"', app)
+        self.assertIn("icon-rotate", app)
+        self.assertIn('"#/map/route/"', app)
+        self.assertIn("stop-vehicles", app)
+        self.assertIn("vehicleTimer", app)
+        self.assertIn("stopVehiclePolling", app)
+        self.assertIn(".map-vehicle", css)
+        self.assertIn(".stop-vehicles", css)
+
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v14", _read("sw.js"))
+        self.assertIn("marshrut-v15", _read("sw.js"))

@@ -200,6 +200,19 @@ class PortalClientMethodsTest(unittest.TestCase):
         client._request = mock.Mock(return_value=None)
         self.assertEqual(client.get_route(1554), {})
 
+    def test_get_vehicles_animation_passes_rids_and_caches(self):
+        client = self.make()
+        client._request = mock.Mock(
+            return_value={"maxkey": 7, "anims": [{"rid": 1554, "deviceCode": "A1"}]})
+        self.assertEqual(client.get_vehicles_animation("1554")[0]["deviceCode"], "A1")
+        client.get_vehicles_animation("1554")
+        client._request.assert_called_once_with("getVehiclesAnimation", {"rids": "1554"})
+
+    def test_empty_vehicles_animation_returns_list(self):
+        client = self.make()
+        client._request = mock.Mock(return_value=None)
+        self.assertEqual(client.get_vehicles_animation("1554"), [])
+
 
 if __name__ == "__main__":
     unittest.main()

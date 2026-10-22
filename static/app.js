@@ -523,6 +523,13 @@ async function renderRoute(view, id) {
   headerRow.appendChild(el("div", { class: "main" }, ["Добавить маршрут в избранное"]));
   view.appendChild(headerRow);
 
+  const mapLink = el("div", { class: "stop-open" });
+  mapLink.appendChild(el("a", {
+    class: "link",
+    href: "#/map/route/" + encodeURIComponent(route.id || id),
+  }, ["Показать маршрут на карте →"]));
+  view.appendChild(mapLink);
+
   const subroutes = (route.subroutes || []).slice()
     .sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
 
@@ -802,6 +809,14 @@ const GEO_ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
 let maplibrePromise = null;
 let mapStopsCache = null;
 let mapInstance = null;
+let vehicleTimer = null;
+
+function stopVehiclePolling() {
+  if (vehicleTimer !== null) {
+    clearInterval(vehicleTimer);
+    vehicleTimer = null;
+  }
+}
 
 // MapLibre грузим только при первом открытии карты: остальным разделам
 // его ~1 МБ (≈270 КБ gzip) не нужен.
@@ -852,7 +867,7 @@ function accuracyCircle(lng, lat, radiusM, steps) {
   };
 }
 
-function mapStopCard(st) {
+function mapStopCard(st, onVehicles) {
   const card = el("div", { class: "card map-stop" });
   const head = el("div", { class: "row stop-head" });
   const main = el("div", { class: "main" });
@@ -862,6 +877,22 @@ function mapStopCard(st) {
   card.appendChild(head);
   const panel = forecastPanel(st.id, st);
   card.appendChild(panel.list);
+  // Ближайшие борта: сервер отдаёт только те, что есть в прогнозе остановки.
+  const incoming = el("div", { class: "stop-vehicles hidden" });
+  card.appendChild(incoming);
+  api("/api/stop-vehicles?sid=" + encodeURIComponent(st.id)).then((data) => {
+    const list = data.vehicles || [];
+    if (!list.length) return;
+    incoming.classList.remove("hidden");
+    incoming.appendChild(el("div", { class: "sub" }, ["Транспорт на подходе"]));
+    list.forEach((v) => {
+      const bits = ["№ " + (v.routeNumber || "?")];
+      if (v.gosNumber) bits.push(v.gosNumber);
+      if (Number.isFinite(v.speed)) bits.push(Math.round(v.speed) + " км/ч");
+      incoming.appendChild(el("div", { class: "vehicle-line" }, [bits.join(" · ")]));
+    });
+    if (onVehicles) onVehicles(list);
+  }).catch(() => {});
   const open = el("div", { class: "stop-open" });
   open.appendChild(el("a", {
     class: "link",
@@ -869,6 +900,39 @@ function mapStopCard(st) {
   }, ["Все прибытия и обновление →"]));
   card.appendChild(open);
   panel.tick();
+  return card;
+}
+
+// Стрелка борта для слоя карты: canvas → ImageData (addImage принимает его).
+function vehicleArrowImage() {
+  const size = 36;
+  const canvas = document.createElement("canvas");
+  canvas.width = size;
+  canvas.height = size;
+  const ctx = canvas.getContext("2d");
+  if (!ctx) return null;
+  ctx.translate(size / 2, size / 2);
+  ctx.beginPath();
+  ctx.moveTo(0, -13);
+  ctx.lineTo(9, 12);
+  ctx.lineTo(0, 7);
+  ctx.lineTo(-9, 12);
+  ctx.closePath();
+  ctx.fillStyle = "#1565c0";
+  ctx.fill();
+  ctx.lineWidth = 2;
+  ctx.strokeStyle = "#ffffff";
+  ctx.stroke();
+  return ctx.getImageData(0, 0, size, size);
+}
+
+function vehicleCard(v) {
+  const card = el("div", { class: "card map-vehicle" });
+  card.appendChild(el("div", { class: "name" }, ["Маршрут " + (v.routeNumber || "?")]));
+  const bits = [];
+  if (v.gosNumber) bits.push(v.gosNumber);
+  if (Number.isFinite(v.speed)) bits.push(Math.round(v.speed) + " км/ч");
+  card.appendChild(el("div", { class: "sub" }, [bits.join(" · ") || "В пути"]));
   return card;
 }
 
@@ -883,7 +947,7 @@ function syncMapChrome() {
   document.documentElement.style.setProperty("--nav-h", navH + "px");
 }
 
-async function renderMap(view, focusId) {
+async function renderMap(view, focusId, routeId) {
   const gen = routeGen;
   syncMapChrome();
   const wrap = el("div", { class: "map-wrap" });
@@ -914,6 +978,43 @@ async function renderMap(view, focusId) {
   }
   if (gen !== routeGen) return;
 
+  // Маршрут на карте: линия, его остановки и борта (данные уже есть в /api/route).
+  let lineFeatures = [];
+  let routeStopFeatures = [];
+  let bounds = null;
+  if (routeId) {
+    try {
+      const route = (await api("/api/route?id=" + encodeURIComponent(routeId))).route || {};
+      (route.subroutes || []).forEach((sub) => {
+        const coords = (sub.points || [])
+          .filter((p) => Number.isFinite(p.lat) && Number.isFinite(p.lng))
+          .map((p) => [p.lng, p.lat]);
+        if (coords.length > 1) {
+          lineFeatures.push({
+            type: "Feature",
+            properties: { id: sub.id || "" },
+            geometry: { type: "LineString", coordinates: coords },
+          });
+          coords.forEach((c) => {
+            if (!bounds) bounds = new maplibregl.LngLatBounds(c, c);
+            else bounds.extend(c);
+          });
+        }
+        (sub.stations || []).forEach((s) => {
+          if (!Number.isFinite(s.lat) || !Number.isFinite(s.lng)) return;
+          routeStopFeatures.push({
+            type: "Feature",
+            geometry: { type: "Point", coordinates: [s.lng, s.lat] },
+            properties: { id: s.id, name: s.name || "" },
+          });
+        });
+      });
+    } catch (err) {
+      showBanner("Не удалось загрузить маршрут: " + err.message, "error");
+    }
+    if (gen !== routeGen) return;
+  }
+
   const map = new maplibregl.Map({
     container: mapBox,
     style: MAP_STYLE,
@@ -930,6 +1031,7 @@ async function renderMap(view, focusId) {
   map.addControl(new maplibregl.AttributionControl({ compact: true }), "bottom-left");
   map.addControl(new maplibregl.NavigationControl({ showCompass: false }), "top-right");
   map.on("error", () => {}); // тайлы могут не догрузиться — карта остаётся рабочей
+  if (bounds) map.fitBounds(bounds, { padding: 48, duration: 0 });
 
   // Событие "load" может наступить, пока мы ждём /api/stations (растровые
   // тайлы OSM грузятся быстрее ответа API). Слушатель ставим сразу, иначе
@@ -959,6 +1061,10 @@ async function renderMap(view, focusId) {
     if (selectedSource) {
       selectedSource.setData({ type: "FeatureCollection", features: [] });
     }
+    const stopVehicles = map.getSource("stop-vehicles");
+    if (stopVehicles) {
+      stopVehicles.setData({ type: "FeatureCollection", features: [] });
+    }
     window.setTimeout(() => {
       if (!sheetOpen) {
         sheet.classList.add("hidden");
@@ -967,23 +1073,54 @@ async function renderMap(view, focusId) {
     }, 230);
   }
 
-  function openSheet(st, feature) {
+  // Открывает любой узел в листе: карточку остановки или карточку борта.
+  function openSheetNode(node, coords) {
     hint.classList.add("hidden");
-    if (selectedSource) {
-      selectedSource.setData({ type: "FeatureCollection", features: [feature] });
-    }
     sheetBody.innerHTML = "";
-    sheetBody.appendChild(mapStopCard(st));
+    sheetBody.appendChild(node);
     sheetBody.scrollTop = 0;
     sheet.classList.remove("hidden");
     applyMode("half");
     sheetOpen = true;
     requestAnimationFrame(() => sheet.classList.add("open"));
-    // Поднимаем точку над листом, чтобы маркер не спрятался за карточкой.
-    map.easeTo({
-      center: feature.geometry.coordinates,
-      padding: { bottom: Math.min(sheet.offsetHeight, Math.max(40, mapBox.offsetHeight - 80)) },
-      duration: 350,
+    if (coords) {
+      // Поднимаем точку над листом, чтобы маркер не спрятался за карточкой.
+      map.easeTo({
+        center: coords,
+        padding: { bottom: Math.min(sheet.offsetHeight, Math.max(40, mapBox.offsetHeight - 80)) },
+        duration: 350,
+      });
+    }
+  }
+
+  function openSheet(st, feature) {
+    if (selectedSource) {
+      selectedSource.setData({ type: "FeatureCollection", features: [feature] });
+    }
+    openSheetNode(mapStopCard(st, showStopVehicles), feature.geometry.coordinates);
+  }
+
+  function openVehicle(v, coords) {
+    openSheetNode(vehicleCard(v), coords);
+  }
+
+  // Борта, которые подходят к выбранной остановке, показываем на карте.
+  function showStopVehicles(list) {
+    const source = map.getSource("stop-vehicles");
+    if (!source) return;
+    source.setData({
+      type: "FeatureCollection",
+      features: (list || []).map((v) => ({
+        type: "Feature",
+        geometry: { type: "Point", coordinates: [v.lng, v.lat] },
+        properties: {
+          deviceCode: v.deviceCode,
+          dir: Number.isFinite(v.dir) ? v.dir : 0,
+          routeNumber: v.routeNumber || "",
+          gosNumber: v.gosNumber || "",
+          speed: v.speed || 0,
+        },
+      })),
     });
   }
 
@@ -1043,8 +1180,9 @@ async function renderMap(view, focusId) {
   // Тап по пустому месту карты закрывает лист; тап по маркеру — открывает.
   map.on("click", (event) => {
     if (!sheetOpen) return;
-    const hits = map.getLayer("stops")
-      ? map.queryRenderedFeatures(event.point, { layers: ["stops"] })
+    const layers = ["stops", "vehicles", "stop-vehicles"].filter((id) => map.getLayer(id));
+    const hits = layers.length
+      ? map.queryRenderedFeatures(event.point, { layers })
       : [];
     if (!hits.length) closeSheet();
   });
@@ -1113,6 +1251,127 @@ async function renderMap(view, focusId) {
         "circle-stroke-width": 2,
         "circle-stroke-color": "#ffffff",
       },
+    });
+
+    // Линия маршрута и его остановки (когда открыта карта маршрута).
+    if (lineFeatures.length) {
+      map.addSource("route-line", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: lineFeatures },
+      });
+      map.addLayer({
+        id: "route-line-casing",
+        type: "line",
+        source: "route-line",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#ffffff", "line-width": 7, "line-opacity": 0.9 },
+      });
+      map.addLayer({
+        id: "route-line",
+        type: "line",
+        source: "route-line",
+        layout: { "line-cap": "round", "line-join": "round" },
+        paint: { "line-color": "#c8102e", "line-width": 4, "line-opacity": 0.95 },
+      });
+    }
+    if (routeStopFeatures.length) {
+      map.addSource("route-stops", {
+        type: "geojson",
+        data: { type: "FeatureCollection", features: routeStopFeatures },
+      });
+      map.addLayer({
+        id: "route-stops",
+        type: "circle",
+        source: "route-stops",
+        paint: {
+          "circle-radius": 4,
+          "circle-color": "#ffffff",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#c8102e",
+        },
+      });
+    }
+
+    // Борта: стрелка поворачивается по направлению движения (dir).
+    let arrow = null;
+    try {
+      arrow = vehicleArrowImage();
+    } catch (err) {
+      arrow = null; // без иконки останутся обычные точки
+    }
+    if (arrow) map.addImage("vehicle-arrow", arrow);
+    map.addSource("vehicles", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    if (arrow) {
+      map.addLayer({
+        id: "vehicles",
+        type: "symbol",
+        source: "vehicles",
+        layout: {
+          "icon-image": "vehicle-arrow",
+          "icon-rotate": ["coalesce", ["get", "dir"], 0],
+          "icon-rotation-alignment": "map",
+          "icon-size": 0.85,
+          "icon-allow-overlap": true,
+        },
+      });
+    } else {
+      map.addLayer({
+        id: "vehicles",
+        type: "circle",
+        source: "vehicles",
+        paint: {
+          "circle-radius": 7,
+          "circle-color": "#1565c0",
+          "circle-stroke-width": 2,
+          "circle-stroke-color": "#ffffff",
+        },
+      });
+    }
+    map.on("click", "vehicles", (event) => {
+      const feature = event.features && event.features[0];
+      if (!feature) return;
+      openVehicle(feature.properties, feature.geometry.coordinates);
+    });
+    map.on("mousemove", "vehicles", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "vehicles", () => {
+      map.getCanvas().style.cursor = "";
+    });
+
+    // Борта, подходящие к выбранной остановке (заполняется из её карточки).
+    map.addSource("stop-vehicles", {
+      type: "geojson",
+      data: { type: "FeatureCollection", features: [] },
+    });
+    if (arrow) {
+      map.addLayer({
+        id: "stop-vehicles",
+        type: "symbol",
+        source: "stop-vehicles",
+        layout: {
+          "icon-image": "vehicle-arrow",
+          "icon-rotate": ["coalesce", ["get", "dir"], 0],
+          "icon-rotation-alignment": "map",
+          "icon-size": 0.8,
+          "icon-allow-overlap": true,
+        },
+        paint: { "icon-opacity": 0.85 },
+      });
+    }
+    map.on("click", "stop-vehicles", (event) => {
+      const feature = event.features && event.features[0];
+      if (!feature) return;
+      openVehicle(feature.properties, feature.geometry.coordinates);
+    });
+    map.on("mousemove", "stop-vehicles", () => {
+      map.getCanvas().style.cursor = "pointer";
+    });
+    map.on("mouseleave", "stop-vehicles", () => {
+      map.getCanvas().style.cursor = "";
     });
 
     map.on("click", "stops", (event) => {
@@ -1195,9 +1454,42 @@ async function renderMap(view, focusId) {
         showBanner("Не удалось определить местоположение: " + why, "error");
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     });
+
+    // Борта маршрута: сразу после слоёв и далее раз в 10 секунд.
+    if (routeId) {
+      loadRouteVehicles();
+      vehicleTimer = setInterval(loadRouteVehicles, 10000);
+    }
   };
   if (styleLoaded) onLoad();
   else map.once("load", onLoad);
+
+  // Позиции бортов маршрута: опрашиваем только видимую вкладку.
+  async function loadRouteVehicles() {
+    if (!routeId || document.hidden) return;
+    try {
+      const data = await api("/api/route-vehicles?routeId=" + encodeURIComponent(routeId));
+      if (gen !== routeGen || mapInstance !== map) return;
+      const source = map.getSource("vehicles");
+      if (!source) return;
+      source.setData({
+        type: "FeatureCollection",
+        features: (data.vehicles || []).map((v) => ({
+          type: "Feature",
+          geometry: { type: "Point", coordinates: [v.lng, v.lat] },
+          properties: {
+            deviceCode: v.deviceCode,
+            dir: Number.isFinite(v.dir) ? v.dir : 0,
+            routeNumber: v.routeNumber || "",
+            gosNumber: v.gosNumber || "",
+            speed: v.speed || 0,
+          },
+        })),
+      });
+    } catch (err) {
+      // Портал недоступен — линия маршрута и остановки остаются на месте.
+    }
+  }
 
   applyPendingScroll();
 }
@@ -1239,6 +1531,7 @@ function markNav(parts) {
 
 async function route() {
   stopRefresh();
+  stopVehiclePolling();
   routeGen += 1;
   showBanner("");
   const hash = location.hash || "#/";
@@ -1262,6 +1555,7 @@ async function route() {
   if (parts[0] === "routes") return renderRoutes(view);
   if (parts[0] === "route") return renderRoute(view, parts[1]);
   if (parts[0] === "stops") return renderStops(view);
+  if (parts[0] === "map" && parts[1] === "route") return renderMap(view, null, parts[2]);
   if (parts[0] === "map") return renderMap(view, parts[1]);
   if (parts[0] === "stop") return renderStop(view, parts[1]);
   view.appendChild(el("div", { class: "empty" }, ["Страница не найдена."]));

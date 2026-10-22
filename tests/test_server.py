@@ -91,9 +91,17 @@ class FakePortal:
             {"id": 5831, "name": "Академика Ландау"},
         ]
         self.forecasts = {5830: [
-            {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 575},
-            {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 21},
+            {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 575,
+             "routeId": 1554, "deviceCode": "A1"},
+            {"routeNumber": "87", "whereGo": "X", "arrivalTimeInSec": 21,
+             "routeId": 1554, "deviceCode": "A2"},
         ]}
+        self.vehicles_animation = [
+            {"deviceCode": "A1", "rid": 1554, "rnum": "87", "gosNum": "КР 583 66",
+             "lat": 56.83, "lng": 60.60, "dir": 90, "speed": 34, "animPoints": []},
+            {"deviceCode": "A2", "rid": 1554, "rnum": "87", "gosNum": "КР 584 66",
+             "lat": 56.84, "lng": 60.61, "dir": 45, "speed": 0, "animPoints": []},
+        ]
         self.vehicle = {"deviceCode": "X", "vehicle": {
             "id": 2628, "gosNumber": "КР 583 66", "garageNumber": "кр583",
             "brand": "ПАЗ", "model": "320415-04 «Vector Next»",
@@ -126,6 +134,10 @@ class FakePortal:
 
     def get_vehicle_forecasts(self, device_code):
         return self.vehicle_forecasts
+
+    def get_vehicles_animation(self, rids):
+        wanted = {int(x) for x in str(rids).split(",") if x}
+        return [v for v in self.vehicles_animation if v["rid"] in wanted]
 
 
 class HandleApiTest(unittest.TestCase):
@@ -165,6 +177,33 @@ class HandleApiTest(unittest.TestCase):
     def test_forecast_empty_ok(self):
         status, payload = self.call("/api/forecast", {"sid": "999"})
         self.assertEqual((status, payload), (200, {"forecasts": []}))
+
+    def test_route_vehicles_returns_compact_list(self):
+        status, payload = self.call("/api/route-vehicles", {"routeId": "1554"})
+        self.assertEqual(status, 200)
+        self.assertEqual([v["deviceCode"] for v in payload["vehicles"]], ["A1", "A2"])
+        first = payload["vehicles"][0]
+        self.assertEqual(first["routeNumber"], "87")
+        self.assertEqual(first["gosNumber"], "КР 583 66")
+        self.assertEqual((first["lat"], first["lng"]), (56.83, 60.6))
+        self.assertNotIn("animPoints", first)
+
+    def test_route_vehicles_requires_route_id(self):
+        status, _ = self.call("/api/route-vehicles", {})
+        self.assertEqual(status, 400)
+
+    def test_route_without_vehicles_is_ok(self):
+        status, payload = self.call("/api/route-vehicles", {"routeId": "999"})
+        self.assertEqual((status, payload), (200, {"vehicles": []}))
+
+    def test_stop_vehicles_follows_nearest_arrivals(self):
+        status, payload = self.call("/api/stop-vehicles", {"sid": "5830"})
+        self.assertEqual(status, 200)
+        self.assertEqual([v["deviceCode"] for v in payload["vehicles"]], ["A2", "A1"])
+
+    def test_stop_vehicles_requires_sid(self):
+        status, _ = self.call("/api/stop-vehicles", {})
+        self.assertEqual(status, 400)
 
     def test_route_by_id(self):
         status, payload = self.call("/api/route", {"id": "1554"})

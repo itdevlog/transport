@@ -122,6 +122,24 @@ def _as_int(value):
         return None
 
 
+def _vehicle_position(item):
+    """Компактная запись борта для карты (без тяжёлых animPoints)."""
+    try:
+        lat = float(item["lat"])
+        lng = float(item["lng"])
+    except (KeyError, TypeError, ValueError):
+        return None
+    return {
+        "deviceCode": item.get("deviceCode"),
+        "lat": lat,
+        "lng": lng,
+        "dir": item.get("dir"),
+        "speed": item.get("speed"),
+        "routeNumber": item.get("rnum"),
+        "gosNumber": item.get("gosNum"),
+    }
+
+
 def _resolve_name(portal, kind, item_id):
     if kind == "stop":
         for s in portal.get_stations():
@@ -240,6 +258,43 @@ def handle_api(path, params, method, body, portal, store, catalog=None,
                 if isinstance(f.get("arrivalTimeInSec"), (int, float)) else float("inf"),
             )
             return 200, {"forecasts": forecasts}
+
+        if path == "/api/route-vehicles" and method == "GET":
+            route_id = _as_int(params.get("routeId"))
+            if route_id is None:
+                return 400, {"error": {"reason": "bad_param",
+                                       "message": "routeId required"}}
+            positions = []
+            for item in portal.get_vehicles_animation(str(route_id)):
+                if str(item.get("rid")) != str(route_id):
+                    continue
+                position = _vehicle_position(item)
+                if position is not None:
+                    positions.append(position)
+            return 200, {"vehicles": positions}
+
+        if path == "/api/stop-vehicles" and method == "GET":
+            sid = _as_int(params.get("sid"))
+            if sid is None:
+                return 400, {"error": {"reason": "bad_param", "message": "sid required"}}
+            forecasts = sorted(
+                portal.get_forecasts(sid),
+                key=lambda f: f.get("arrivalTimeInSec")
+                if isinstance(f.get("arrivalTimeInSec"), (int, float)) else float("inf"),
+            )
+            nearest = [f for f in forecasts if f.get("deviceCode")][:3]
+            rids = sorted({str(f["routeId"]) for f in nearest
+                           if f.get("routeId") is not None})
+            by_device = {}
+            if rids:
+                for item in portal.get_vehicles_animation(",".join(rids)):
+                    position = _vehicle_position(item)
+                    if position is not None:
+                        by_device[str(item.get("deviceCode"))] = position
+            return 200, {
+                "vehicles": [by_device[str(f["deviceCode"])] for f in nearest
+                             if str(f["deviceCode"]) in by_device],
+            }
 
         if path == "/api/stop" and method == "GET":
             sid = _as_int(params.get("sid"))

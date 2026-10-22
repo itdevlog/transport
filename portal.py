@@ -67,6 +67,9 @@ class PortalClient:
         self._station_routes_cache = CachedValue(ttl.get("stations", 21600))
         self._vehicle_cache = CachedValue(ttl.get("vehicle", 21600))
         self._vehicle_forecast_cache = CachedValue(ttl.get("vehicleForecasts", 30))
+        # Позиции бортов обновляются на портале часто; 10 с — разумный компромисс
+        # между свежестью и нагрузкой (портал не отдаёт дельты).
+        self._vehicles_animation_cache = CachedValue(ttl.get("vehiclesAnimation", 10))
 
     def get_routes(self):
         return self._routes_cache.get("all", lambda: self._request("getRoutes", {})) or []
@@ -94,6 +97,14 @@ class PortalClient:
             device_code,
             lambda: self._request("getVehicleInfo", {"deviceCode": device_code}),
         ) or {}
+
+    def get_vehicles_animation(self, rids):
+        """Позиции бортов по списку id маршрутов (строка через запятую)."""
+        data = self._vehicles_animation_cache.get(
+            rids,
+            lambda: self._request("getVehiclesAnimation", {"rids": rids}),
+        ) or {}
+        return data.get("anims") or []
 
     def get_vehicle_forecasts(self, device_code):
         return self._vehicle_forecast_cache.get(

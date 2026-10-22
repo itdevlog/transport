@@ -470,6 +470,15 @@ body.map-mode { overflow: hidden; }
 }
 .map-stop { margin-top: 10px; }
 
+/* Карточка борта в шторке и список транспорта на подходе. */
+.map-vehicle { margin-top: 0; padding: 4px 2px 8px; }
+.stop-vehicles { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }
+.stop-vehicles .vehicle-line {
+  font-size: .86rem;
+  color: var(--ink);
+  padding: 2px 0;
+}
+
 @media (min-width: 720px) {
   #view { padding: 22px; }
 }
