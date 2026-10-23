@@ -180,26 +180,37 @@ const ACTION_ICONS = {
   clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5.3l3.4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
 };
 
-function iconButton(icon, label, href) {
-  const link = el("a", { class: "icon-btn", href: href, "aria-label": label, title: label });
-  link.innerHTML = ACTION_ICONS[icon] || "";
-  return link;
+function iconButton(icon, label, href, onClick) {
+  const node = onClick
+    ? el("button", { class: "icon-btn", type: "button", "aria-label": label, title: label })
+    : el("a", { class: "icon-btn", href: href, "aria-label": label, title: label });
+  node.innerHTML = ACTION_ICONS[icon] || "";
+  node.addEventListener("click", (event) => {
+    // Иконка внутри кликабельной строки не должна её раскрывать.
+    event.stopPropagation();
+    if (onClick) {
+      event.preventDefault();
+      onClick(event);
+    }
+  });
+  return node;
 }
 
-// items: { icon, label, href } и/или { star: true, kind, id, name }.
+// items: { icon, label, href } и/или { icon, label, onClick } и/или
+// { star: true, kind, id, name }.
 function actionBar(items) {
   const bar = el("div", { class: "actions" });
   (items || []).forEach((item) => {
     if (!item) return;
     if (item.star) bar.appendChild(starButton(item.kind, item.id, item.name));
-    else bar.appendChild(iconButton(item.icon, item.label, item.href));
+    else bar.appendChild(iconButton(item.icon, item.label, item.href, item.onClick));
   });
   return bar;
 }
 
 /* ---------- forecast rendering ---------- */
 
-function renderForecastList(container, forecasts) {
+function renderForecastList(container, forecasts, opts) {
   container.innerHTML = "";
   const items = (forecasts || []).slice().sort((a, b) => {
     const av = typeof a.arrivalTimeInSec === "number" ? a.arrivalTimeInSec : Infinity;
@@ -217,11 +228,11 @@ function renderForecastList(container, forecasts) {
     groups.get(where).push(f);
   });
   groups.forEach((arrivals, where) => {
-    container.appendChild(renderDirGroup(where, arrivals));
+    container.appendChild(renderDirGroup(where, arrivals, opts));
   });
 }
 
-function renderDirGroup(where, arrivals) {
+function renderDirGroup(where, arrivals, opts) {
   const group = el("div", { class: "dir-group" });
   const head = el("div", { class: "dir-head" });
   head.appendChild(el("span", { class: "dir-label" }, ["до " + where]));
@@ -243,6 +254,20 @@ function renderDirGroup(where, arrivals) {
     if (clock) text += " (" + clock + ")";
     eta.textContent = text;
     row.appendChild(eta);
+    // На карте у каждой строки прогноза — «показать борт» и «линия маршрута».
+    if (opts && opts.vehicleActions) {
+      const actions = el("div", { class: "actions row-actions" });
+      if (f.deviceCode && opts.onShowVehicle) {
+        actions.appendChild(iconButton("pin", "Показать борт на карте", null, () => {
+          opts.onShowVehicle(f.deviceCode, f.routeId, f.routeNumber);
+        }));
+      }
+      if (f.routeId !== undefined && f.routeId !== null && f.routeId !== "") {
+        actions.appendChild(iconButton("route", "Показать маршрут на карте",
+          "#/map/route/" + encodeURIComponent(f.routeId)));
+      }
+      if (actions.childNodes.length) row.appendChild(actions);
+    }
     item.appendChild(row);
 
     if (f.deviceCode) {
@@ -320,7 +345,7 @@ function renderVehicleCard(card, data) {
   }
 }
 
-function forecastPanel(sid, stop) {
+function forecastPanel(sid, stop, opts) {
   const list = el("div");
   let last = null;
   let lastAt = null;
@@ -331,11 +356,11 @@ function forecastPanel(sid, stop) {
       last = data.forecasts || [];
       lastAt = new Date();
       lastError = null;
-      renderForecastList(list, last);
+      renderForecastList(list, last, opts);
     } catch (err) {
       lastError = err;
       if (last) {
-        renderForecastList(list, last);
+        renderForecastList(list, last, opts);
       } else {
         list.innerHTML = "";
         list.appendChild(el("div", { class: "empty muted" }, ["Прогноз недоступен: " + err.message]));
@@ -911,7 +936,7 @@ function accuracyCircle(lng, lat, radiusM, steps) {
   };
 }
 
-function mapStopCard(st, onVehicles) {
+function mapStopCard(st, onVehicles, onShowVehicle) {
   const card = el("div", { class: "card map-stop" });
   const head = el("div", { class: "row stop-head" });
   const main = el("div", { class: "main" });
@@ -919,7 +944,10 @@ function mapStopCard(st, onVehicles) {
   head.appendChild(main);
   head.appendChild(starButton("stop", st.id, st.name));
   card.appendChild(head);
-  const panel = forecastPanel(st.id, st);
+  const panel = forecastPanel(st.id, st, {
+    vehicleActions: true,
+    onShowVehicle: onShowVehicle,
+  });
   card.appendChild(panel.list);
   // Ближайшие борта: сервер отдаёт только те, что есть в прогнозе остановки.
   const incoming = el("div", { class: "stop-vehicles hidden" });
@@ -1090,6 +1118,7 @@ async function renderMap(view, focusId, routeId) {
   let selectedSource = null;
   let sheetOpen = false;
   let sheetMode = "half";
+  let stopVehicleCache = [];
 
   const halfHeight = () => Math.round(window.innerHeight * 0.45);
   const fullHeight = () => Math.round(window.innerHeight * 0.92);
@@ -1143,7 +1172,7 @@ async function renderMap(view, focusId, routeId) {
     if (selectedSource) {
       selectedSource.setData({ type: "FeatureCollection", features: [feature] });
     }
-    openSheetNode(mapStopCard(st, showStopVehicles), feature.geometry.coordinates);
+    openSheetNode(mapStopCard(st, showStopVehicles, focusVehicle), feature.geometry.coordinates);
   }
 
   function openVehicle(v, coords) {
@@ -1152,6 +1181,7 @@ async function renderMap(view, focusId, routeId) {
 
   // Борта, которые подходят к выбранной остановке, показываем на карте.
   function showStopVehicles(list) {
+    stopVehicleCache = list || [];
     const source = map.getSource("stop-vehicles");
     if (!source) return;
     source.setData({
@@ -1169,6 +1199,26 @@ async function renderMap(view, focusId, routeId) {
         },
       })),
     });
+  }
+
+  // «Показать борт на карте»: ищем его среди подходящих к остановке, затем
+  // в данных его маршрута (кэш портала — 10 с, лишних запросов не будет).
+  async function focusVehicle(deviceCode, routeId) {
+    let found = stopVehicleCache.find((v) => v.deviceCode === deviceCode) || null;
+    if (!found && routeId !== undefined && routeId !== null && routeId !== "") {
+      try {
+        const data = await api("/api/route-vehicles?routeId=" + encodeURIComponent(routeId));
+        found = (data.vehicles || []).find((v) => v.deviceCode === deviceCode) || null;
+      } catch (err) {
+        found = null;
+      }
+    }
+    if (!found || !Number.isFinite(found.lat) || !Number.isFinite(found.lng)) {
+      showBanner("Борт уже не на линии.", "warn");
+      return;
+    }
+    map.flyTo({ center: [found.lng, found.lat], zoom: Math.max(map.getZoom(), 16) });
+    openVehicle(found, [found.lng, found.lat]);
   }
 
   sheetClose.addEventListener("click", closeSheet);

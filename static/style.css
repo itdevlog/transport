@@ -132,16 +132,22 @@ h2 + .sub, .sub { color: var(--muted); font-size: .92rem; }
 .num.type-other { background: #6b7785; }
 
 .star {
-  border: none;
-  background: none;
-  font-size: 1.25rem;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 34px;
+  height: 34px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 9px;
+  background: var(--card);
+  font-size: 1.1rem;
   line-height: 1;
   cursor: pointer;
-  color: #c9d1d9;
-  padding: 4px;
+  color: #98a1ab;
 }
 
-.star.on { color: #f2b705; }
+.star.on { color: #f2b705; border-color: #f2b705; }
 
 .controls {
   display: flex;
@@ -490,21 +496,26 @@ body.map-mode { overflow: hidden; }
   padding: 2px 2px 6px;
 }
 .icon-btn {
-  width: 40px;
-  height: 40px;
+  width: 34px;
+  height: 34px;
   display: flex;
   align-items: center;
   justify-content: center;
-  border: 1px solid var(--line);
-  border-radius: 10px;
-  background: var(--card);
-  color: var(--accent);
+  border: 1px solid transparent;
+  border-radius: 9px;
+  background: #37474f;
+  color: #fff;
   text-decoration: none;
+  cursor: pointer;
 }
-.icon-btn svg { display: block; width: 20px; height: 20px; }
-.icon-btn:hover { border-color: var(--accent); }
-.actions .star { width: 40px; height: 40px; }
+.icon-btn svg { display: block; width: 18px; height: 18px; }
+.icon-btn:hover { background: #263238; }
 .route-card .stop-head { padding: 8px 2px; }
+/* В строке прогноза иконки компактнее, а строка при нехватке места переносится. */
+.dir-row { flex-wrap: wrap; }
+.row .actions { padding: 0; gap: 4px; }
+.dir-row .icon-btn { width: 30px; height: 30px; }
+.dir-row .icon-btn svg { width: 16px; height: 16px; }
 
 /* Карточка борта в шторке и список транспорта на подходе. */
 .map-vehicle { margin-top: 0; padding: 4px 2px 8px; }

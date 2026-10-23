@@ -164,6 +164,22 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("routeId", app)
         self.assertIn(".icon-btn", css)
         self.assertIn(".actions", css)
+        self.assertIn("background: #37474f", css)
+        self.assertIn(".star {", css)
+
+    def test_map_forecast_rows_have_vehicle_actions(self):
+        app = _read("app.js")
+        # Строки прогноза в шторке остановки: пин (показать борт) и линия маршрута.
+        self.assertIn("vehicleActions", app)
+        self.assertIn("async function focusVehicle(", app)
+        self.assertIn("Показать борт на карте", app)
+        self.assertIn("Показать маршрут на карте", app)
+        self.assertIn('"#/map/route/" + encodeURIComponent(f.routeId)', app)
+        self.assertIn("onClick", app)
+        # Раскрытая карточка борта не дублирует эти кнопки.
+        vehicle_card = app[app.index("function renderVehicleCard("):app.index("function forecastPanel(")]
+        self.assertNotIn("iconButton(", vehicle_card)
+        self.assertNotIn("actionBar(", vehicle_card)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v18", _read("sw.js"))
+        self.assertIn("marshrut-v19", _read("sw.js"))
