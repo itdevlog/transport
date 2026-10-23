@@ -847,11 +847,9 @@ const MAP_STYLE = {
   },
   layers: [{ id: "osm", type: "raster", source: "osm" }],
 };
-// Стрелка «моё место»: поворачиваем внутренний svg, потому что transform самого
-// элемента занят MapLibre (он позиционирует маркер через translate).
-const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path d="M12 2 L19.5 21 L12 17.2 L4.5 21 Z" fill="#1565c0" stroke="#ffffff" ' +
-  'stroke-width="1.6" stroke-linejoin="round"/></svg>';
+// Иконка кнопки «Моё место» — стрелка-навигатор (как было до компаса).
+const GEO_ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
+  '<path d="M21 3 L3 10.6 L10.3 13.7 L13.4 21 Z" fill="currentColor"/></svg>';
 let maplibrePromise = null;
 let mapStopsCache = null;
 let mapInstance = null;
@@ -1458,7 +1456,7 @@ async function renderMap(view, focusId, routeId) {
     const geoButton = el("button", {
       class: "map-geo", type: "button", title: "Моё место", "aria-label": "Моё место",
     });
-    geoButton.textContent = "🧭";
+    geoButton.innerHTML = GEO_ARROW_SVG;
     mapBox.appendChild(geoButton);
     let userMarker = null;
     geoButton.addEventListener("click", () => {
@@ -1471,16 +1469,8 @@ async function renderMap(view, focusId, routeId) {
         geoButton.disabled = false;
         const coords = [pos.coords.longitude, pos.coords.latitude];
         if (userMarker) userMarker.remove();
-        const arrow = el("div", { class: "map-arrow", title: "Моё место" });
-        arrow.innerHTML = ARROW_SVG;
-        // heading браузер отдаёт не всегда (на десктопе почти всегда null) —
-        // тогда стрелка смотрит вверх.
-        const svg = arrow.querySelector("svg");
-        if (svg) {
-          const heading = Number.isFinite(pos.coords.heading) ? pos.coords.heading : 0;
-          svg.style.transform = "rotate(" + heading + "deg)";
-        }
-        userMarker = new maplibregl.Marker({ element: arrow, anchor: "center" })
+        const dot = el("div", { class: "map-dot", title: "Моё место" });
+        userMarker = new maplibregl.Marker({ element: dot, anchor: "center" })
           .setLngLat(coords)
           .addTo(map);
         const accuracy = map.getSource("accuracy");

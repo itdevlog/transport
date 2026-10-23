@@ -436,14 +436,14 @@ body.map-mode { overflow: hidden; }
   -webkit-overflow-scrolling: touch;
 }
 .map-sheet-body .map-stop { margin-top: 0; }
-.map-arrow { width: 26px; height: 26px; }
-.map-arrow svg {
-  display: block;
-  width: 100%;
-  height: 100%;
-  transform-box: fill-box;
-  transform-origin: 50% 50%;
-  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, .35));
+/* Метка «Моё место»: аккуратная точка с белым ободком и мягким ореолом. */
+.map-dot {
+  width: 18px;
+  height: 18px;
+  border-radius: 50%;
+  background: #1565c0;
+  border: 3px solid #fff;
+  box-shadow: 0 0 0 7px rgba(21, 101, 192, .18), 0 2px 6px rgba(0, 0, 0, .35);
 }
 .map-geo {
   position: absolute;

@@ -61,15 +61,17 @@ class MapViewTest(unittest.TestCase):
 
     def test_app_has_geolocation_button(self):
         app = _read("app.js")
+        css = _read("style.css")
         self.assertIn("navigator.geolocation", app)
         self.assertIn("map-geo", app)
-        # Вместо точки — стрелка, повёрнутая по heading (если браузер его отдал).
-        self.assertIn("map-arrow", app)
-        self.assertIn("pos.coords.heading", app)
+        # Кнопка «Моё место» — стрелка-навигатор (SVG), а не компас-эмодзи.
+        self.assertIn("geoButton.innerHTML = GEO_ARROW_SVG", app)
+        self.assertNotIn("🧭", app)
+        # Сама метка на карте — аккуратная точка, без поворота по heading.
+        self.assertIn('class: "map-dot"', app)
+        self.assertIn(".map-dot", css)
+        self.assertNotIn("pos.coords.heading", app)
         self.assertIn("accuracyCircle", app)
-        # Кнопка «Моё место» — компас-эмодзи, а не кружок и не стрелка.
-        self.assertIn('geoButton.textContent = "🧭"', app)
-        self.assertNotIn("GEO_ARROW_SVG", app)
 
     def test_map_mode_banner_and_selected_stop(self):
         app = _read("app.js")
@@ -164,4 +166,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn(".actions", css)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v17", _read("sw.js"))
+        self.assertIn("marshrut-v18", _read("sw.js"))
