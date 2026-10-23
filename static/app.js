@@ -172,6 +172,31 @@ function enqueueStar(kind, id, name) {
   return starChain;
 }
 
+/* ---------- единый бар действий ---------- */
+
+const ACTION_ICONS = {
+  pin: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2a7 7 0 0 0-7 7c0 5.2 7 13 7 13s7-7.8 7-13a7 7 0 0 0-7-7zm0 9.5a2.5 2.5 0 1 1 0-5 2.5 2.5 0 0 1 0 5z" fill="currentColor"/></svg>',
+  route: '<svg viewBox="0 0 24 24" aria-hidden="true"><path d="M5 19h10a3.5 3.5 0 0 0 0-7H9a3.5 3.5 0 0 1 0-7h10" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"/><path d="M16 2l3.5 3L16 8M19 15l-3.5 3 3.5 3" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round"/></svg>',
+  clock: '<svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="9" fill="none" stroke="currentColor" stroke-width="2"/><path d="M12 7v5.3l3.4 2" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round"/></svg>',
+};
+
+function iconButton(icon, label, href) {
+  const link = el("a", { class: "icon-btn", href: href, "aria-label": label, title: label });
+  link.innerHTML = ACTION_ICONS[icon] || "";
+  return link;
+}
+
+// items: { icon, label, href } и/или { star: true, kind, id, name }.
+function actionBar(items) {
+  const bar = el("div", { class: "actions" });
+  (items || []).forEach((item) => {
+    if (!item) return;
+    if (item.star) bar.appendChild(starButton(item.kind, item.id, item.name));
+    else bar.appendChild(iconButton(item.icon, item.label, item.href));
+  });
+  return bar;
+}
+
 /* ---------- forecast rendering ---------- */
 
 function renderForecastList(container, forecasts) {
@@ -324,17 +349,52 @@ function forecastPanel(sid, stop) {
 /* ---------- views ---------- */
 
 function routeRow(r) {
-  const row = el("div", { class: "row" });
-  row.appendChild(el("span", { class: "num " + routeTypeClass(r.routeTypeId) },
+  const card = el("div", { class: "card route-card" });
+  const head = el("div", {
+    class: "row stop-head",
+    role: "button",
+    tabindex: "0",
+    "aria-expanded": "false",
+    "aria-label": "Действия с маршрутом",
+  });
+  const chevron = el("span", { class: "chevron" }, ["▸"]);
+  head.appendChild(chevron);
+  head.appendChild(el("span", { class: "num " + routeTypeClass(r.routeTypeId) },
     [r.number || r.shortName || "?"]));
   const main = el("div", { class: "main" });
   const link = el("a", { class: "link", href: "#/route/" + encodeURIComponent(r.id) });
   link.appendChild(el("div", { class: "name" }, [r.name || r.shortName || ("Маршрут " + r.id)]));
   link.appendChild(el("div", { class: "meta" }, [routeTypeName(r.routeTypeId)]));
   main.appendChild(link);
-  row.appendChild(main);
-  row.appendChild(starButton("route", r.id, r.name || r.number));
-  return row;
+  head.appendChild(main);
+  head.appendChild(starButton("route", r.id, r.name || r.number));
+  card.appendChild(head);
+
+  const details = el("div", { class: "stop-details hidden" });
+  details.appendChild(actionBar([
+    { icon: "pin", label: "Показать на карте", href: "#/map/route/" + encodeURIComponent(r.id) },
+    { icon: "route", label: "Открыть маршрут", href: "#/route/" + encodeURIComponent(r.id) },
+  ]));
+  card.appendChild(details);
+
+  let open = false;
+  function toggle() {
+    open = !open;
+    details.classList.toggle("hidden", !open);
+    card.classList.toggle("open", open);
+    head.setAttribute("aria-expanded", open ? "true" : "false");
+    chevron.textContent = open ? "▾" : "▸";
+  }
+  head.addEventListener("click", (event) => {
+    if (event.target.closest("a, .star")) return;
+    toggle();
+  });
+  head.addEventListener("keydown", (event) => {
+    if (event.key !== "Enter" && event.key !== " ") return;
+    event.preventDefault();
+    toggle();
+  });
+  return card;
 }
 
 function stationRow(st) {
@@ -405,12 +465,10 @@ async function renderFavorites(view) {
       panels.set(sid, panel);
       const details = el("div", { class: "stop-details hidden" });
       details.appendChild(panel.list);
-      const openBox = el("div", { class: "stop-open" });
-      openBox.appendChild(el("a", { class: "link", href: "#/stop/" + encodeURIComponent(s.id) },
-        ["Все прибытия и обновление →"]));
-      openBox.appendChild(document.createTextNode(" · "));
-      openBox.appendChild(el("a", { class: "link", href: "#/map/" + encodeURIComponent(s.id) },
-        ["На карте"]));
+      const openBox = actionBar([
+        { icon: "clock", label: "Все прибытия и обновление", href: "#/stop/" + encodeURIComponent(s.id) },
+        { icon: "pin", label: "Показать на карте", href: "#/map/" + encodeURIComponent(s.id) },
+      ]);
       details.appendChild(openBox);
 
       function toggle() {
@@ -518,17 +576,11 @@ async function renderRoute(view, id) {
   const bits = [routeTypeName(route.type || route.routeTypeId)];
   if (route.fromStation && route.toStation) bits.push(route.fromStation + " – " + route.toStation);
   view.appendChild(el("div", { class: "sub" }, [bits.join(" · ")]));
-  const headerRow = el("div", { class: "row" });
-  headerRow.appendChild(starButton("route", route.id, route.name || route.number));
-  headerRow.appendChild(el("div", { class: "main" }, ["Добавить маршрут в избранное"]));
+  const headerRow = actionBar([
+    { star: true, kind: "route", id: route.id, name: route.name || route.number },
+    { icon: "pin", label: "Показать маршрут на карте", href: "#/map/route/" + encodeURIComponent(route.id || id) },
+  ]);
   view.appendChild(headerRow);
-
-  const mapLink = el("div", { class: "stop-open" });
-  mapLink.appendChild(el("a", {
-    class: "link",
-    href: "#/map/route/" + encodeURIComponent(route.id || id),
-  }, ["Показать маршрут на карте →"]));
-  view.appendChild(mapLink);
 
   const subroutes = (route.subroutes || []).slice()
     .sort((a, b) => (b.isMain ? 1 : 0) - (a.isMain ? 1 : 0));
@@ -599,10 +651,14 @@ function platformWord(n) {
 function fillRouteChips(box, routes) {
   box.innerHTML = "";
   (routes || []).forEach((r) => {
-    box.appendChild(el("span", {
+    const chip = el("a", {
       class: "chip " + routeTypeClass(r.routeTypeId),
+      href: "#/route/" + encodeURIComponent(r.id),
       title: routeTypeName(r.routeTypeId) + " " + (r.name || r.number || ""),
-    }, [String(r.number || r.shortName || "?")]));
+    }, [String(r.number || r.shortName || "?")]);
+    // Карточка раскрывается по клику; чип должен вести на маршрут.
+    chip.addEventListener("click", (event) => event.stopPropagation());
+    box.appendChild(chip);
   });
 }
 
@@ -634,13 +690,10 @@ function stopResultRow(st) {
   const panel = forecastPanel(st.id, st);
   const details = el("div", { class: "stop-details hidden" });
   details.appendChild(panel.list);
-  const openBox = el("div", { class: "stop-open" });
-  openBox.appendChild(el("a", { class: "link", href: "#/stop/" + encodeURIComponent(st.id) },
-    ["Все прибытия и обновление →"]));
-  openBox.appendChild(document.createTextNode(" · "));
-  openBox.appendChild(el("a", { class: "link", href: "#/map/" + encodeURIComponent(st.id) },
-    ["На карте"]));
-  details.appendChild(openBox);
+  details.appendChild(actionBar([
+    { icon: "clock", label: "Все прибытия и обновление", href: "#/stop/" + encodeURIComponent(st.id) },
+    { icon: "pin", label: "Показать на карте", href: "#/map/" + encodeURIComponent(st.id) },
+  ]));
 
   let open = false;
   function toggle() {
@@ -753,12 +806,9 @@ async function renderStop(view, sid) {
   subLine.appendChild(document.createTextNode(" "));
   subLine.appendChild(typeDots);
   view.appendChild(subLine);
-  const starRow = el("div", { class: "row" });
-  starRow.appendChild(starButton("stop", Number(sid), fav && fav.name));
-  starRow.appendChild(el("div", { class: "main" }, ["Добавить остановку в избранное"]));
-  view.appendChild(starRow);
-  view.appendChild(el("div", { class: "stop-open" }, [
-    el("a", { class: "link", href: "#/map/" + encodeURIComponent(sid) }, ["Показать на карте"]),
+  view.appendChild(actionBar([
+    { star: true, kind: "stop", id: Number(sid), name: fav && fav.name },
+    { icon: "pin", label: "Показать на карте", href: "#/map/" + encodeURIComponent(sid) },
   ]));
 
   const panel = forecastPanel(sid, fav || null);
@@ -893,12 +943,9 @@ function mapStopCard(st, onVehicles) {
     });
     if (onVehicles) onVehicles(list);
   }).catch(() => {});
-  const open = el("div", { class: "stop-open" });
-  open.appendChild(el("a", {
-    class: "link",
-    href: "#/stop/" + encodeURIComponent(st.id),
-  }, ["Все прибытия и обновление →"]));
-  card.appendChild(open);
+  card.appendChild(actionBar([
+    { icon: "clock", label: "Все прибытия и обновление", href: "#/stop/" + encodeURIComponent(st.id) },
+  ]));
   panel.tick();
   return card;
 }
@@ -933,6 +980,11 @@ function vehicleCard(v) {
   if (v.gosNumber) bits.push(v.gosNumber);
   if (Number.isFinite(v.speed)) bits.push(Math.round(v.speed) + " км/ч");
   card.appendChild(el("div", { class: "sub" }, [bits.join(" · ") || "В пути"]));
+  if (v.routeId !== undefined && v.routeId !== null && v.routeId !== "") {
+    card.appendChild(actionBar([
+      { icon: "route", label: "Открыть маршрут", href: "#/route/" + encodeURIComponent(v.routeId) },
+    ]));
+  }
   return card;
 }
 
@@ -1117,6 +1169,7 @@ async function renderMap(view, focusId, routeId) {
           deviceCode: v.deviceCode,
           dir: Number.isFinite(v.dir) ? v.dir : 0,
           routeNumber: v.routeNumber || "",
+          routeId: v.routeId,
           gosNumber: v.gosNumber || "",
           speed: v.speed || 0,
         },

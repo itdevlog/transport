@@ -470,6 +470,31 @@ body.map-mode { overflow: hidden; }
 }
 .map-stop { margin-top: 10px; }
 
+/* Единый бар действий: одинаковые иконки во всех списках и на страницах. */
+.actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px;
+  align-items: center;
+  padding: 2px 2px 6px;
+}
+.icon-btn {
+  width: 40px;
+  height: 40px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--line);
+  border-radius: 10px;
+  background: var(--card);
+  color: var(--accent);
+  text-decoration: none;
+}
+.icon-btn svg { display: block; width: 20px; height: 20px; }
+.icon-btn:hover { border-color: var(--accent); }
+.actions .star { width: 40px; height: 40px; }
+.route-card .stop-head { padding: 8px 2px; }
+
 /* Карточка борта в шторке и список транспорта на подходе. */
 .map-vehicle { margin-top: 0; padding: 4px 2px 8px; }
 .stop-vehicles { margin-top: 10px; padding-top: 8px; border-top: 1px solid var(--line); }

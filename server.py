@@ -136,6 +136,7 @@ def _vehicle_position(item):
         "dir": item.get("dir"),
         "speed": item.get("speed"),
         "routeNumber": item.get("rnum"),
+        "routeId": item.get("rid"),
         "gosNumber": item.get("gosNum"),
     }
 

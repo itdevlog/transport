@@ -141,5 +141,18 @@ class MapViewTest(unittest.TestCase):
         self.assertIn(".map-vehicle", css)
         self.assertIn(".stop-vehicles", css)
 
+    def test_unified_action_bar(self):
+        app = _read("app.js")
+        css = _read("style.css")
+        # Один бар иконок во всех списках и на страницах.
+        self.assertIn("function actionBar(", app)
+        self.assertIn("function iconButton(", app)
+        self.assertIn('class: "icon-btn"', app)
+        self.assertIn('class: "actions"', app)
+        self.assertIn('href: "#/route/"', app)
+        self.assertIn("routeId", app)
+        self.assertIn(".icon-btn", css)
+        self.assertIn(".actions", css)
+
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v15", _read("sw.js"))
+        self.assertIn("marshrut-v16", _read("sw.js"))

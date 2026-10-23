@@ -184,6 +184,7 @@ class HandleApiTest(unittest.TestCase):
         self.assertEqual([v["deviceCode"] for v in payload["vehicles"]], ["A1", "A2"])
         first = payload["vehicles"][0]
         self.assertEqual(first["routeNumber"], "87")
+        self.assertEqual(first["routeId"], 1554)
         self.assertEqual(first["gosNumber"], "КР 583 66")
         self.assertEqual((first["lat"], first["lng"]), (56.83, 60.6))
         self.assertNotIn("animPoints", first)
