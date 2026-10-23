@@ -852,10 +852,6 @@ const MAP_STYLE = {
 const ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
   '<path d="M12 2 L19.5 21 L12 17.2 L4.5 21 Z" fill="#1565c0" stroke="#ffffff" ' +
   'stroke-width="1.6" stroke-linejoin="round"/></svg>';
-// Иконка кнопки «Моё место» — стрелка-навигатор (как в картах).
-const GEO_ARROW_SVG = '<svg viewBox="0 0 24 24" aria-hidden="true">' +
-  '<path d="M21 3 L3 10.6 L10.3 13.7 L13.4 21 Z" fill="currentColor"/></svg>';
-
 let maplibrePromise = null;
 let mapStopsCache = null;
 let mapInstance = null;
@@ -1298,10 +1294,10 @@ async function renderMap(view, focusId, routeId) {
       type: "circle",
       source: "selected-stop",
       paint: {
-        "circle-radius": 9,
-        "circle-color": "#1565c0",
+        "circle-radius": 11,
+        "circle-color": "#ff8f00",
         "circle-opacity": 0.95,
-        "circle-stroke-width": 2,
+        "circle-stroke-width": 3,
         "circle-stroke-color": "#ffffff",
       },
     });
@@ -1462,7 +1458,7 @@ async function renderMap(view, focusId, routeId) {
     const geoButton = el("button", {
       class: "map-geo", type: "button", title: "Моё место", "aria-label": "Моё место",
     });
-    geoButton.innerHTML = GEO_ARROW_SVG;
+    geoButton.textContent = "🧭";
     mapBox.appendChild(geoButton);
     let userMarker = null;
     geoButton.addEventListener("click", () => {
@@ -1507,6 +1503,9 @@ async function renderMap(view, focusId, routeId) {
         showBanner("Не удалось определить местоположение: " + why, "error");
       }, { enableHighAccuracy: true, timeout: 10000, maximumAge: 60000 });
     });
+
+    // Подсветка выбранной остановки — поверх линии маршрута и бортов.
+    if (map.getLayer("selected-stop")) map.moveLayer("selected-stop");
 
     // Борта маршрута: сразу после слоёв и далее раз в 10 секунд.
     if (routeId) {

@@ -67,9 +67,18 @@ class MapViewTest(unittest.TestCase):
         self.assertIn("map-arrow", app)
         self.assertIn("pos.coords.heading", app)
         self.assertIn("accuracyCircle", app)
-        # Кнопка «Моё место» — стрелка-навигатор, а не кружок.
-        self.assertIn("GEO_ARROW_SVG", app)
-        self.assertIn("geoButton.innerHTML", app)
+        # Кнопка «Моё место» — компас-эмодзи, а не кружок и не стрелка.
+        self.assertIn('geoButton.textContent = "🧭"', app)
+        self.assertNotIn("GEO_ARROW_SVG", app)
+
+    def test_map_mode_banner_and_selected_stop(self):
+        app = _read("app.js")
+        css = _read("style.css")
+        # Баннер в полноэкранной карте всплывает и не сдвигает её вниз.
+        self.assertIn("body.map-mode .banner", css)
+        # Выбранная остановка — янтарная и поверх линии маршрута и бортов.
+        self.assertIn('"circle-color": "#ff8f00"', app)
+        self.assertIn('map.moveLayer("selected-stop")', app)
 
     def test_map_layers_survive_early_load_event(self):
         app = _read("app.js")
@@ -155,4 +164,4 @@ class MapViewTest(unittest.TestCase):
         self.assertIn(".actions", css)
 
     def test_service_worker_cache_bumped(self):
-        self.assertIn("marshrut-v16", _read("sw.js"))
+        self.assertIn("marshrut-v17", _read("sw.js"))
